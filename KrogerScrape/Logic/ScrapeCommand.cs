@@ -9,16 +9,16 @@ using Microsoft.Extensions.Logging;
 
 namespace KrogerScrape.Logic
 {
-    public class PersistReceiptsCommand
+    public class ScrapeCommand
     {
         private readonly EntityRepository _entityRepository;
         private readonly KrogerClientFactory _krogerClientFactory;
-        private readonly ILogger<PersistReceiptsCommand> _logger;
+        private readonly ILogger<ScrapeCommand> _logger;
 
-        public PersistReceiptsCommand(
+        public ScrapeCommand(
             EntityRepository entityRepository,
             KrogerClientFactory krogerClientFactory,
-            ILogger<PersistReceiptsCommand> logger)
+            ILogger<ScrapeCommand> logger)
         {
             _entityRepository = entityRepository;
             _krogerClientFactory = krogerClientFactory;
@@ -100,7 +100,7 @@ namespace KrogerScrape.Logic
                         var receiptIdEntity = await _entityRepository.GetOrAddReceiptIdAsync(userEntity.Id, receiptId);
                         if (!fetchAgain && receiptIdEntity.GetReceiptOperationEntities.Any())
                         {
-                            _logger.LogInformation(
+                            _logger.LogDebug(
                                 "A receipt on {ReceiptTransactionDate} has already been fetched in the past and will therefore be skipped.",
                                 receiptDate);
                             continue;

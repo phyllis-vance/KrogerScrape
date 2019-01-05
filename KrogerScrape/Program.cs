@@ -53,6 +53,7 @@ namespace KrogerScrape
             });
 
             app.Command("scrape", c => ConfigureScrapeCommand(c, loggerFactory, logger));
+            app.Command("stop-orphans", c => ConfigureStopOrphansCommand(c, loggerFactory, logger));
         }
 
         private static void ConfigureScrapeCommand(CommandLineApplication app, ILoggerFactory loggerFactory, ILogger<Program> logger)
@@ -68,7 +69,7 @@ namespace KrogerScrape
                 "-p|--password <PASSWORD>",
                 "The password for your Kroger account. Defaults to acquiring it interactively.",
                 CommandOptionType.SingleValue);
-            var fetchAgainOption = app.Option(
+            var refetchOption = app.Option(
                 "-r|--refetch",
                 "Fetch receipts that have already been fetched.",
                 CommandOptionType.NoValue);
@@ -97,6 +98,17 @@ namespace KrogerScrape
                     return 1;
                 }
 
+                logger.LogInformation("Initializing the {CommandName} command.", app.Name);
+
+                if (refetchOption.HasValue())
+                {
+                    logger.LogInformation("Both new receipts and receipts that have already been fetched will be fetched.");
+                }
+                else
+                {
+                    logger.LogInformation("Only new receipts will be fetched.");
+                }
+
                 var downloadsPath = downloadsPathOption.GetDownloadsPath();
                 logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", downloadsPath);
 
@@ -115,15 +127,45 @@ namespace KrogerScrape
                     downloadsPath,
                     loggerFactory);
 
-                var persistReceiptsCommand = new PersistReceiptsCommand(
+                var scrapeCommand = new ScrapeCommand(
                     entityRepository,
                     krogerClientFactory,
-                    loggerFactory.CreateLogger<PersistReceiptsCommand>());
+                    loggerFactory.CreateLogger<ScrapeCommand>());
 
-                await persistReceiptsCommand.ExecuteAsync(
+                await scrapeCommand.ExecuteAsync(
                     email,
                     password,
-                    fetchAgainOption.HasValue());
+                    refetchOption.HasValue());
+
+                logger.LogInformation("The {CommandName} command has completed.", app.Name);
+
+                return 0;
+            });
+        }
+
+        private static void ConfigureStopOrphansCommand(CommandLineApplication app, ILoggerFactory loggerFactory, ILogger<Program> logger)
+        {
+            app.Description = "Stop orphan Chromium processes.";
+
+            var downloadsPathOption = app.DownloadsPathOption();
+            app.CustomHelpOption();
+
+            app.OnExecute(async () =>
+            {
+                logger.LogInformation("Initializing the {CommandName} command.", app.Name);
+
+                var downloadsPath = downloadsPathOption.GetDownloadsPath();
+                logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", downloadsPath);
+
+                var krogerClientFactory = new KrogerClientFactory(
+                    downloadsPath,
+                    loggerFactory);
+
+                var stopOrphansCommand = new StopOrphansCommand(krogerClientFactory);
+
+                await stopOrphansCommand.ExecuteAsync();
+
+                logger.LogInformation("The {CommandName} command has completed.", app.Name);
 
                 return 0;
             });

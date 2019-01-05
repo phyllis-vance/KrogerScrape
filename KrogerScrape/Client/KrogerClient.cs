@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using KrogerScrape.Support;
 using Microsoft.Extensions.Logging;
@@ -62,7 +63,7 @@ namespace KrogerScrape.Client
             {
                 var  revisionInfo = await EnsureDownloadsAsync();
 
-                _logger.LogInformation($"Launching Chromium from:{Environment.NewLine}{{ExecutablePath}}", revisionInfo.ExecutablePath);
+                _logger.LogDebug($"Launching Chromium from:{Environment.NewLine}{{ExecutablePath}}", revisionInfo.ExecutablePath);
                 var browser = await Puppeteer.LaunchAsync(new LaunchOptions
                 {
                     ExecutablePath = revisionInfo.ExecutablePath,
@@ -98,9 +99,10 @@ namespace KrogerScrape.Client
             else
             {
                 _logger.LogInformation(
-                    "Downloading Chromium revision {Revision} for {Platform}.",
+                    $"Downloading Chromium revision {{Revision}} for {{Platform}} to:{Environment.NewLine}{{FolderPath}}",
                     revisionInfo.Revision,
-                    revisionInfo.Platform);
+                    revisionInfo.Platform,
+                    revisionInfo.FolderPath);
 
                 // Set up the progress report.
                 long? contentLength;
@@ -153,6 +155,11 @@ namespace KrogerScrape.Client
 
                 // Start the download.
                 revisionInfo = await browserFetcher.DownloadAsync(desiredRevision);
+
+                if (contentLength.HasValue)
+                {
+                    _logger.LogInformation("Download progress: {Percentage}%", 100);
+                }
 
                 _logger.LogInformation("Chromium is done downloading.");
             }
@@ -238,7 +245,7 @@ function () {
 
         public void KillOrphanBrowsers()
         {
-            _logger.LogInformation("Searching for orphan Chromium processes.");
+            _logger.LogDebug("Searching for orphan Chromium processes.");
             var downloadsDirectory = GetDownloadsDirectory();
             var allProcesses = Process.GetProcesses();
             try
@@ -262,7 +269,7 @@ function () {
 
                 if (!orphanProcesses.Any())
                 {
-                    _logger.LogInformation("None were found.");
+                    _logger.LogDebug("None were found.");
                 }
                 else
                 {
@@ -276,23 +283,30 @@ function () {
                             .Select(x => $"  - {x.Key} (count: {x.Count()})"));
 
                     _logger.LogWarning(
-                        $"Found {{Count}} processes with the following file names:{Environment.NewLine}{{FileNameList}}",
+                        $"Found {{Count}} orphan Chromium processes with the following file names:{Environment.NewLine}{{FileNameList}}",
                         orphanProcesses.Count,
                         fileNameList);
 
                     foreach (var process in orphanProcesses)
                     {
-                        _logger.LogWarning(
-                            "Killing process {ProcessId}, which was started on {StartTime}.",
-                            process.Id,
-                            process.StartTime);
-                        try
+                        if (process.HasExited)
                         {
-                            process.Kill();
+                            _logger.LogWarning("Process {ProcessId} has already exited.", process.Id);
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            _logger.LogError(ex, "Failed to kill this process.");
+                            _logger.LogWarning(
+                               "Stopping process {ProcessId}, which was started on {StartTime}.",
+                               process.Id,
+                               process.StartTime);
+                            try
+                            {
+                                process.Kill();
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to kill this process.");
+                            }
                         }
                     }
                 }

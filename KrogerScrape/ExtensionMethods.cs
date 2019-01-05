@@ -23,7 +23,7 @@ namespace KrogerScrape
         public static CommandOption<DatabasePath> DatabasePathOption(this CommandLineApplication app)
         {
             return app.Option<DatabasePath>(
-                "-db|--databasePath <PATH>",
+                "--database-path <PATH>",
                 $"The path to the database path. Defaults to the application directory ({GetDefaultDatabasePath()})",
                 CommandOptionType.SingleValue);
         }
@@ -31,7 +31,7 @@ namespace KrogerScrape
         public static CommandOption<DownloadsPath> DownloadsPathOption(this CommandLineApplication app)
         {
             return app.Option<DownloadsPath>(
-                "-dl|--downloadsPath <PATH>",
+                "--downloads-path <DIR>",
                 $"The path to the where downloads (e.g. Chromium) should go. Defaults to the application directory ({GetDefaultDownloadsPath()})",
                 CommandOptionType.SingleValue);
         }
