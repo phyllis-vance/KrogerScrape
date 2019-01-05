@@ -11,7 +11,8 @@ namespace KrogerScrape.Entities
         public DateTimeOffset CompletedTimestamp { get; set; }
         public string Method { get; set; }
         public string Url { get; set; }
-        public string Body { get; set; }
+        public CompressionType CompressionType { get; set; }
+        public byte[] Body { get; set; }
 
         public OperationEntity OperationEntity { get; set; }
     }

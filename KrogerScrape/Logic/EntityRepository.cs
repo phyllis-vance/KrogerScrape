@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using KrogerScrape.Client;
 using KrogerScrape.Entities;
+using KrogerScrape.Support;
 using Microsoft.EntityFrameworkCore;
 
 namespace KrogerScrape.Logic
@@ -75,6 +77,11 @@ namespace KrogerScrape.Logic
         {
             using (var entityContext = await _entityContextFactory.GetAsync())
             {
+                var uncompressedBytes = Encoding.UTF8.GetBytes(response.Body);
+                var compressedBytes = CompressionUtility.Compress(uncompressedBytes);
+                var isCompressed = compressedBytes.Length < uncompressedBytes.Length;
+                var bytes = isCompressed ? compressedBytes : uncompressedBytes;
+
                 entityContext.Responses.Add(new ResponseEntity
                 {
                     OperationEntityId = operationEntityId,
@@ -82,7 +89,8 @@ namespace KrogerScrape.Logic
                     CompletedTimestamp = response.CompletedTimestamp,
                     Method = response.Method.Method,
                     Url = response.Url,
-                    Body = response.Body,
+                    CompressionType = isCompressed ? CompressionType.Gzip : CompressionType.None,
+                    Body = bytes,
                 });
 
                 await entityContext.SaveChangesAsync();

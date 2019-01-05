@@ -40,7 +40,8 @@ namespace KrogerScrape
         {
             app.Description = "Fetch receipt data from Kroger.com.";
 
-            app.ValueParsers.Add(new DatabasePathValueParser());
+            app.ValueParsers.Add(new MarkerObjectValueParser<DownloadsPath>());
+            app.ValueParsers.Add(new MarkerObjectValueParser<DatabasePath>());
             app.VersionOptionFromAssemblyAttributes(typeof(Program).Assembly);
             app.CustomHelpOption();
 
@@ -68,9 +69,10 @@ namespace KrogerScrape
                 "The password for your Kroger account. Defaults to acquiring it interactively.",
                 CommandOptionType.SingleValue);
             var fetchAgainOption = app.Option(
-                "-fa|--fetch-again",
+                "-r|--refetch",
                 "Fetch receipts that have already been fetched.",
                 CommandOptionType.NoValue);
+            var downloadsPathOption = app.DownloadsPathOption();
             var databasePathOption = app.DatabasePathOption();
             app.CustomHelpOption();
 
@@ -95,6 +97,9 @@ namespace KrogerScrape
                     return 1;
                 }
 
+                var downloadsPath = downloadsPathOption.GetDownloadsPath();
+                logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", downloadsPath);
+
                 var databasePath = databasePathOption.GetDatabasePath();
                 logger.LogDebug($"Using database path:{Environment.NewLine}{{DatabasePath}}", databasePath);
 
@@ -105,7 +110,10 @@ namespace KrogerScrape
                 }
 
                 var entityRepository = new EntityRepository(entityContextFactory);
-                var krogerClientFactory = new KrogerClientFactory(loggerFactory);
+
+                var krogerClientFactory = new KrogerClientFactory(
+                    downloadsPath,
+                    loggerFactory);
 
                 var persistReceiptsCommand = new PersistReceiptsCommand(
                     entityRepository,

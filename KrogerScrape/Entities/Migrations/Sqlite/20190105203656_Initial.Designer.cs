@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KrogerScrape.Entities.Migrations.Sqlite
 {
     [DbContext(typeof(SqliteEntityContext))]
-    [Migration("20190104052017_Initial")]
+    [Migration("20190105203656_Initial")]
     partial class Initial
     {
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -71,9 +71,11 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd();
 
-                    b.Property<string>("Body");
+                    b.Property<byte[]>("Body");
 
                     b.Property<DateTimeOffset>("CompletedTimestamp");
+
+                    b.Property<int>("CompressionType");
 
                     b.Property<string>("Method");
 

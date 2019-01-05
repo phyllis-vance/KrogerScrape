@@ -43,6 +43,7 @@ namespace KrogerScrape.Client
             "www.kroger.com/product/images/",
         };
 
+        private readonly string _downloadsPath;
         private readonly ILogger<KrogerClient> _logger;
         private readonly AsyncBlockingQueue<Response> _queue;
         private readonly Task _dequeueTask;
@@ -50,8 +51,9 @@ namespace KrogerScrape.Client
         private readonly Lazy<Task<Browser>> _lazyBrowser;
         private Browser _browserForDispose;
 
-        public KrogerClient(ILogger<KrogerClient> logger)
+        public KrogerClient(string downloadsPath, ILogger<KrogerClient> logger)
         {
+            _downloadsPath = downloadsPath;
             _logger = logger;
             _queue = new AsyncBlockingQueue<Response>();
             _dequeueTask = DequeueAsync();
@@ -72,11 +74,9 @@ namespace KrogerScrape.Client
             });
         }
 
-        private static string GetDownloadsDirectory()
+        private string GetDownloadsDirectory()
         {
-            var applicationDirectory = Path.GetDirectoryName(typeof(Program).Assembly.Location);
-            var path = Path.Combine(applicationDirectory, ".local-chromium");
-            return Path.GetFullPath(path);
+            return Path.GetFullPath(Path.Combine(_downloadsPath, "Chromium"));
         }
 
         private async Task<RevisionInfo> EnsureDownloadsAsync()
@@ -259,33 +259,41 @@ function () {
                     .OrderBy(x => x.StartTime)
                     .ToList();
 
-                var fileNameList = string.Join(
-                    Environment.NewLine,
-                    orphanProcesses
-                        .Select(x => x.MainModule.FileName)
-                        .GroupBy(x => x)
-                        .OrderByDescending(x => x.Count())
-                        .ThenBy(x => x.Key, StringComparer.Ordinal)
-                        .Select(x => $"  - {x.Key} (count: {x.Count()})"));
 
-                _logger.LogInformation(
-                    $"Found {{Count}} processes with the following file names:{Environment.NewLine}{{FileNameList}}",
-                    orphanProcesses.Count,
-                    fileNameList);
-
-                foreach (var process in orphanProcesses)
+                if (!orphanProcesses.Any())
                 {
-                    _logger.LogInformation(
-                        "Killing process {ProcessId}, which was started on {StartTime}.",
-                        process.Id,
-                        process.StartTime);
-                    try
+                    _logger.LogInformation("None were found.");
+                }
+                else
+                {
+                    var fileNameList = string.Join(
+                        Environment.NewLine,
+                        orphanProcesses
+                            .Select(x => x.MainModule.FileName)
+                            .GroupBy(x => x)
+                            .OrderByDescending(x => x.Count())
+                            .ThenBy(x => x.Key, StringComparer.Ordinal)
+                            .Select(x => $"  - {x.Key} (count: {x.Count()})"));
+
+                    _logger.LogWarning(
+                        $"Found {{Count}} processes with the following file names:{Environment.NewLine}{{FileNameList}}",
+                        orphanProcesses.Count,
+                        fileNameList);
+
+                    foreach (var process in orphanProcesses)
                     {
-                        process.Kill();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to kill this process.");
+                        _logger.LogWarning(
+                            "Killing process {ProcessId}, which was started on {StartTime}.",
+                            process.Id,
+                            process.StartTime);
+                        try
+                        {
+                            process.Kill();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to kill this process.");
+                        }
                     }
                 }
             }

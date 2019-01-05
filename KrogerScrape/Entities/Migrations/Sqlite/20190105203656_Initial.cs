@@ -91,7 +91,8 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                     CompletedTimestamp = table.Column<DateTimeOffset>(nullable: false),
                     Method = table.Column<string>(nullable: true),
                     Url = table.Column<string>(nullable: true),
-                    Body = table.Column<string>(nullable: true)
+                    CompressionType = table.Column<int>(nullable: false),
+                    Body = table.Column<byte[]>(nullable: true)
                 },
                 constraints: table =>
                 {

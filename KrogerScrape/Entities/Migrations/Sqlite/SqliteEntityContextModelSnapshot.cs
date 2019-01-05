@@ -69,9 +69,11 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd();
 
-                    b.Property<string>("Body");
+                    b.Property<byte[]>("Body");
 
                     b.Property<DateTimeOffset>("CompletedTimestamp");
+
+                    b.Property<int>("CompressionType");
 
                     b.Property<string>("Method");
 
