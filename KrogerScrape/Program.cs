@@ -73,6 +73,10 @@ namespace KrogerScrape
                 "-r|--refetch",
                 "Fetch receipts that have already been fetched.",
                 CommandOptionType.NoValue);
+            var debugOption = app.Option(
+                "--debug",
+                "Debug problems by showing diagnostic information.",
+                CommandOptionType.NoValue);
             var downloadsPathOption = app.DownloadsPathOption();
             var databasePathOption = app.DatabasePathOption();
             app.CustomHelpOption();
@@ -109,6 +113,11 @@ namespace KrogerScrape
                     logger.LogInformation("Only new receipts will be fetched.");
                 }
 
+                if (debugOption.HasValue())
+                {
+                    logger.LogInformation("Debug mode is enabled.");
+                }
+
                 var downloadsPath = downloadsPathOption.GetDownloadsPath();
                 logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", downloadsPath);
 
@@ -125,6 +134,7 @@ namespace KrogerScrape
 
                 var krogerClientFactory = new KrogerClientFactory(
                     downloadsPath,
+                    debugOption.HasValue(),
                     loggerFactory);
 
                 var scrapeCommand = new ScrapeCommand(
@@ -159,7 +169,8 @@ namespace KrogerScrape
 
                 var krogerClientFactory = new KrogerClientFactory(
                     downloadsPath,
-                    loggerFactory);
+                    debug: false,
+                    loggerFactory: loggerFactory);
 
                 var stopOrphansCommand = new StopOrphansCommand(krogerClientFactory);
 

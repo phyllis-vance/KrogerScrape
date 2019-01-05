@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
 using KrogerScrape.Support;
 using Microsoft.Extensions.Logging;
@@ -45,6 +44,7 @@ namespace KrogerScrape.Client
         };
 
         private readonly string _downloadsPath;
+        private readonly bool _debug;
         private readonly ILogger<KrogerClient> _logger;
         private readonly AsyncBlockingQueue<Response> _queue;
         private readonly Task _dequeueTask;
@@ -52,9 +52,13 @@ namespace KrogerScrape.Client
         private readonly Lazy<Task<Browser>> _lazyBrowser;
         private Browser _browserForDispose;
 
-        public KrogerClient(string downloadsPath, ILogger<KrogerClient> logger)
+        public KrogerClient(
+            string downloadsPath,
+            bool debug,
+            ILogger<KrogerClient> logger)
         {
             _downloadsPath = downloadsPath;
+            _debug = debug;
             _logger = logger;
             _queue = new AsyncBlockingQueue<Response>();
             _dequeueTask = DequeueAsync();
@@ -68,7 +72,7 @@ namespace KrogerScrape.Client
                 {
                     ExecutablePath = revisionInfo.ExecutablePath,
                     Headless = true,
-                    DumpIO = false,
+                    DumpIO = _debug,
                 });
                 _browserForDispose = browser;
                 return browser;
@@ -213,27 +217,36 @@ function () {
     });
 }");
 
+            await page.SetViewportAsync(new ViewPortOptions
+            {
+                Width = 1920,
+                Height = 1080,
+            });
+
             await page.SetRequestInterceptionAsync(true);
 
             page.Request += async (sender, requestEventArgs) =>
             {
-                var url = requestEventArgs.Request.Url;
-
-                foreach (var extension in ExcludedExtensions)
+                if (!_debug)
                 {
-                    if (url.EndsWith(extension))
+                    var url = requestEventArgs.Request.Url;
+
+                    foreach (var extension in ExcludedExtensions)
                     {
-                        await requestEventArgs.Request.AbortAsync();
-                        return;
+                        if (url.EndsWith(extension))
+                        {
+                            await requestEventArgs.Request.AbortAsync();
+                            return;
+                        }
                     }
-                }
 
-                foreach (var substring in ExcludedSubstrings)
-                {
-                    if (url.Contains(substring))
+                    foreach (var substring in ExcludedSubstrings)
                     {
-                        await requestEventArgs.Request.AbortAsync();
-                        return;
+                        if (url.Contains(substring))
+                        {
+                            await requestEventArgs.Request.AbortAsync();
+                            return;
+                        }
                     }
                 }
 
@@ -352,6 +365,8 @@ function () {
                         WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
                     });
 
+                await CaptureScreenshotIfDebugAsync(page, nameof(SignInAsync));
+
                 await page.TypeAsync("#SignIn-emailInput", email);
                 await page.TypeAsync("#SignIn-passwordInput", password);
                 await page.ClickAsync("#SignIn-submitButton");
@@ -366,7 +381,42 @@ function () {
 
                 return captureState
                     .GetValues<SignInResponse>()
-                    .LastOrDefault();
+                    .Last();
+            }
+        }
+
+        private async Task CaptureScreenshotIfDebugAsync(Page page, string name)
+        {
+            if (!_debug)
+            {
+                return;
+            }
+
+            var fileName = $"{DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH-mm-ss-fffffff")}-{name}.png";
+            var directory = Path.Combine(_downloadsPath, "Screenshots");
+            var path = Path.Combine(directory, fileName);
+
+            _logger.LogDebug(
+                $"Capturing a screenshot of URL:{Environment.NewLine}" +
+                $"{{PageUrl}}{Environment.NewLine}" +
+                $"The screenshot will be written to:{Environment.NewLine}" +
+                $"{{PdfPath}}",
+                page.Url,
+                path);
+
+            Directory.CreateDirectory(directory);
+
+            try
+            {
+                await page.ScreenshotAsync(path, new ScreenshotOptions
+                {
+                    FullPage = true,
+                    Type = ScreenshotType.Png,
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "The screenshot could not be captured.");
             }
         }
 
@@ -388,25 +438,34 @@ function () {
                         WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
                     });
 
+                await CaptureScreenshotIfDebugAsync(
+                    page,
+                    nameof(GetReceiptSummariesAsync));
+
                 await captureState.WaitForCompletionAsync();
 
                 return captureState
                     .GetValues<List<Receipt>>()
-                    .LastOrDefault();
+                    .Last();
             }
         }
 
         public string GetReceiptUrl(ReceiptId receiptId)
         {
-            var pageUrl = "https://www.kroger.com/mypurchases/detail/" + string.Join("~", new[]
+            var pageUrl = "https://www.kroger.com/mypurchases/detail/" + string.Join("~", GetReceiptPieces(receiptId));
+            return pageUrl;
+        }
+
+        private static string[] GetReceiptPieces(ReceiptId receiptId)
+        {
+            return new[]
             {
                 receiptId.DivisionNumber,
                 receiptId.StoreNumber,
                 receiptId.TransactionDate,
                 receiptId.TerminalNumber,
                 receiptId.TransactionId,
-            });
-            return pageUrl;
+            };
         }
 
         public async Task<Receipt> GetReceiptAsync(ReceiptId receiptId)
@@ -429,11 +488,16 @@ function () {
                         WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
                     });
 
+
+                await CaptureScreenshotIfDebugAsync(
+                    page,
+                    $"{nameof(GetReceiptAsync)}-{string.Join("_", GetReceiptPieces(receiptId))}");
+
                 await captureState.WaitForCompletionAsync();
 
                 return captureState
                     .GetValues<Receipt>()
-                    .LastOrDefault();
+                    .Last();
             }
         }
 
