@@ -400,7 +400,7 @@ function () {
                 $"Capturing a screenshot of URL:{Environment.NewLine}" +
                 $"{{PageUrl}}{Environment.NewLine}" +
                 $"The screenshot will be written to:{Environment.NewLine}" +
-                $"{{PdfPath}}",
+                $"{{ScreenshotPath}}",
                 page.Url,
                 path);
 
