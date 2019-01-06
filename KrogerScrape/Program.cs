@@ -2,6 +2,7 @@
 using KrogerScrape.Client;
 using KrogerScrape.Entities;
 using KrogerScrape.Logic;
+using KrogerScrape.Support;
 using McMaster.Extensions.CommandLineUtils;
 using Microsoft.Extensions.Logging;
 
@@ -38,16 +39,19 @@ namespace KrogerScrape
 
         private static void ConfigureApplication(CommandLineApplication app, LoggerFactory loggerFactory, ILogger<Program> logger)
         {
+            app.FullName = "KrogerScrape";
+            app.Name = app.FullName;
             app.Description = "Fetch receipt data from Kroger.com.";
 
             app.ValueParsers.Add(new MarkerObjectValueParser<DownloadsPath>());
             app.ValueParsers.Add(new MarkerObjectValueParser<DatabasePath>());
-            app.VersionOptionFromAssemblyAttributes(typeof(Program).Assembly);
+            var versionOption = app.VersionOptionFromAssemblyAttributes(typeof(Program).Assembly);
+            versionOption.Description = "Show version information.";
             app.CustomHelpOption();
 
             app.OnExecute(() =>
             {
-                app.ShowHelp();
+                app.ShowHelp(usePager: false);
                 logger.LogWarning("Specify a command to continue.");
                 return 1;
             });
@@ -70,7 +74,7 @@ namespace KrogerScrape
                 "The password for your Kroger account. Defaults to acquiring it interactively.",
                 CommandOptionType.SingleValue);
             var refetchOption = app.Option(
-                "-r|--refetch",
+                "--refetch",
                 "Fetch receipts that have already been fetched.",
                 CommandOptionType.NoValue);
             var debugOption = app.Option(

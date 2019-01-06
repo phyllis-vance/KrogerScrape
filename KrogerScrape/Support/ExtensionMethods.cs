@@ -1,30 +1,31 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using McMaster.Extensions.CommandLineUtils;
 
-namespace KrogerScrape
+namespace KrogerScrape.Support
 {
     public static class ExtensionMethods
     {
         private static string GetDefaultDatabasePath()
         {
-            return Path.Combine(GetApplicationDirectiry(), "KrogerScrape.sqlite3");
+            return Path.Combine(GetDefaultBaseDirectory(), "KrogerScrape.sqlite3");
         }
 
         private static string GetDefaultDownloadsPath()
         {
-            return Path.Combine(GetApplicationDirectiry(), "Downloads");
+            return Path.Combine(GetDefaultBaseDirectory(), "Downloads");
         }
 
-        private static string GetApplicationDirectiry()
+        private static string GetDefaultBaseDirectory()
         {
-            return Path.GetDirectoryName(typeof(Program).Assembly.Location);
+            return Directory.GetCurrentDirectory();
         }
 
         public static CommandOption<DatabasePath> DatabasePathOption(this CommandLineApplication app)
         {
             return app.Option<DatabasePath>(
                 "--database-path <PATH>",
-                $"The path to the database path. Defaults to the application directory ({GetDefaultDatabasePath()})",
+                $"The path to the database path.{Environment.NewLine}Default: {GetDefaultDatabasePath()}",
                 CommandOptionType.SingleValue);
         }
 
@@ -32,7 +33,7 @@ namespace KrogerScrape
         {
             return app.Option<DownloadsPath>(
                 "--downloads-path <DIR>",
-                $"The path to the where downloads (e.g. Chromium) should go. Defaults to the application directory ({GetDefaultDownloadsPath()})",
+                $"The path to the where downloads (e.g. Chromium) should go.{Environment.NewLine}Default: {GetDefaultDownloadsPath()}",
                 CommandOptionType.SingleValue);
         }
 

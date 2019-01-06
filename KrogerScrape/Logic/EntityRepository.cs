@@ -46,6 +46,7 @@ namespace KrogerScrape.Logic
                 var receiptIdEntity = await entityContext
                     .ReceiptIds
                     .Include(x => x.GetReceiptOperationEntities)
+                    .ThenInclude(x => x.ResponseEntities)
                     .Where(x => x.DivisionNumber == receiptId.DivisionNumber
                              && x.StoreNumber == receiptId.StoreNumber
                              && x.TransactionDate == receiptId.TransactionDate

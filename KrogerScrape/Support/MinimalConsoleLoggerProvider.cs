@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 
-namespace KrogerScrape
+namespace KrogerScrape.Support
 {
     public class MinimalConsoleLoggerProvider : ILoggerProvider
     {

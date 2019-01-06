@@ -1,4 +1,4 @@
-﻿namespace KrogerScrape
+﻿namespace KrogerScrape.Support
 {
     public class DownloadsPath
     {

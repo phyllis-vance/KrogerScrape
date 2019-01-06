@@ -98,7 +98,10 @@ namespace KrogerScrape.Logic
                         }
 
                         var receiptIdEntity = await _entityRepository.GetOrAddReceiptIdAsync(userEntity.Id, receiptId);
-                        if (!fetchAgain && receiptIdEntity.GetReceiptOperationEntities.Any())
+                        if (!fetchAgain
+                            && receiptIdEntity
+                                .GetReceiptOperationEntities
+                                .Any(gr => gr.ResponseEntities.Any(r => r.RequestType == RequestType.ReceiptDetail)))
                         {
                             _logger.LogDebug(
                                 "A receipt on {ReceiptTransactionDate} has already been fetched in the past and will therefore be skipped.",
