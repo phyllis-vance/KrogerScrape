@@ -43,4 +43,5 @@ Fetching receipt 3 of 3.
   URL:  https://www.kroger.com/mypurchases/detail/670~00178~2018-10-23~0100~42
   Date: 2018-10-23
 Done. The receipt had 7 items, totaling $53.01.
+The scrape command has completed successfully.
 ```
