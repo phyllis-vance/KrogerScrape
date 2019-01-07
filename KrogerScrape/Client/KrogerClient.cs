@@ -44,8 +44,7 @@ namespace KrogerScrape.Client
             "www.kroger.com/product/images/",
         };
 
-        private readonly string _downloadsPath;
-        private readonly bool _debug;
+        private readonly IKrogerClientSettings _settings;
         private readonly ILogger<KrogerClient> _logger;
         private readonly AsyncBlockingQueue<Response> _queue;
         private readonly Task _dequeueTask;
@@ -56,12 +55,10 @@ namespace KrogerScrape.Client
         private bool _signedIn;
 
         public KrogerClient(
-            string downloadsPath,
-            bool debug,
+            IKrogerClientSettings settings,
             ILogger<KrogerClient> logger)
         {
-            _downloadsPath = downloadsPath;
-            _debug = debug;
+            _settings = settings;
             _logger = logger;
             _queue = new AsyncBlockingQueue<Response>();
             _dequeueTask = DequeueAsync();
@@ -75,7 +72,7 @@ namespace KrogerScrape.Client
                 {
                     ExecutablePath = revisionInfo.ExecutablePath,
                     Headless = true,
-                    DumpIO = _debug,
+                    DumpIO = _settings.Debug,
                 });
                 _browserForDispose = browser;
                 return browser;
@@ -84,7 +81,7 @@ namespace KrogerScrape.Client
 
         private string GetDownloadsDirectory()
         {
-            return Path.GetFullPath(Path.Combine(_downloadsPath, "Chromium"));
+            return Path.GetFullPath(Path.Combine(_settings.DownloadsPath, "Chromium"));
         }
 
         private async Task<RevisionInfo> EnsureDownloadsAsync()
@@ -230,7 +227,7 @@ function () {
 
             page.Request += async (sender, requestEventArgs) =>
             {
-                if (!_debug)
+                if (!_settings.Debug)
                 {
                     var url = requestEventArgs.Request.Url;
 
@@ -352,7 +349,7 @@ function () {
             }
         }
 
-        public async Task<SignInResponse> SignInAsync(string email, string password, CancellationToken token)
+        public async Task<SignInResponse> SignInAsync(CancellationToken token)
         {
             ThrowIfDisposed();
             if (_signedIn)
@@ -380,8 +377,8 @@ function () {
 
                 await CaptureScreenshotIfDebugAsync(page, nameof(SignInAsync));
 
-                await page.TypeAsync("#SignIn-emailInput", email);
-                await page.TypeAsync("#SignIn-passwordInput", password);
+                await page.TypeAsync("#SignIn-emailInput", _settings.Email);
+                await page.TypeAsync("#SignIn-passwordInput", _settings.Password);
                 await page.ClickAsync("#SignIn-submitButton");
 
                 await page.WaitForNavigationAsync(
@@ -406,13 +403,13 @@ function () {
 
         private async Task CaptureScreenshotIfDebugAsync(Page page, string name)
         {
-            if (!_debug)
+            if (!_settings.Debug)
             {
                 return;
             }
 
             var fileName = $"{DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH-mm-ss-fffffff")}-{name}.png";
-            var directory = Path.Combine(_downloadsPath, "Screenshots");
+            var directory = Path.Combine(_settings.DownloadsPath, "Screenshots");
             var path = Path.Combine(directory, fileName);
 
             _logger.LogDebug(

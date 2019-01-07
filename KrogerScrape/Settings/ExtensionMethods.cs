@@ -2,7 +2,7 @@
 using System.IO;
 using McMaster.Extensions.CommandLineUtils;
 
-namespace KrogerScrape.Support
+namespace KrogerScrape.Settings
 {
     public static class ExtensionMethods
     {

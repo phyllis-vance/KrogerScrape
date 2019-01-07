@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using KrogerScrape.Client;
 using KrogerScrape.Entities;
+using KrogerScrape.Settings;
 using Microsoft.Extensions.Logging;
 
 namespace KrogerScrape.Logic
@@ -14,27 +15,27 @@ namespace KrogerScrape.Logic
     {
         private readonly EntityRepository _entityRepository;
         private readonly KrogerClientFactory _krogerClientFactory;
+        private readonly IKrogerScrapeSettings _settings;
         private readonly ILogger<ScrapeCommand> _logger;
 
         public ScrapeCommand(
             EntityRepository entityRepository,
             KrogerClientFactory krogerClientFactory,
+            IKrogerScrapeSettings settings,
             ILogger<ScrapeCommand> logger)
         {
             _entityRepository = entityRepository;
             _krogerClientFactory = krogerClientFactory;
+            _settings = settings;
             _logger = logger;
         }
 
         public async Task<bool> ExecuteAsync(
-            string email,
-            string password,
-            bool fetchAgain,
             CancellationToken token)
         {
             using (var krogerClient = _krogerClientFactory.Create())
             {
-                var userEntity = await _entityRepository.GetOrAddUserAsync(email, token);
+                var userEntity = await _entityRepository.GetOrAddUserAsync(_settings.Email, token);
                 var commandEntity = await _entityRepository.StartCommandAsync(userEntity.Id, token);
 
                 SignInEntity signIn = null;
@@ -68,9 +69,9 @@ namespace KrogerScrape.Logic
                     await krogerClient.InitializeAsync();
 
                     token.ThrowIfCancellationRequested();
-                    _logger.LogInformation("Logging in with email address {Email}.", email);
+                    _logger.LogInformation("Logging in with email address {Email}.", _settings.Email);
                     signIn = await _entityRepository.StartSignInAsync(commandEntity.Id, token);
-                    var signInResponse = await krogerClient.SignInAsync(email, password, token);
+                    var signInResponse = await krogerClient.SignInAsync(token);
                     await _entityRepository.CompleteOperationAsync(signIn, token);
 
                     if (signInResponse == null)
@@ -121,7 +122,7 @@ namespace KrogerScrape.Logic
                         }
 
                         var receiptIdEntity = await _entityRepository.GetOrAddReceiptIdAsync(userEntity.Id, receiptId, token);
-                        if (!fetchAgain
+                        if (!_settings.RefetchReceipts
                             && receiptIdEntity
                                 .GetReceiptOperationEntities
                                 .Any(gr => gr.ResponseEntities.Any(r => r.RequestType == RequestType.ReceiptDetail)))

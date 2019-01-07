@@ -1,29 +1,16 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System;
 
 namespace KrogerScrape.Client
 {
     public class KrogerClientFactory
     {
-        private readonly string _downloadsPath;
-        private readonly bool _debug;
-        private readonly ILoggerFactory _loggerFactory;
+        private readonly Func<KrogerClient> _create;
 
-        public KrogerClientFactory(
-            string downloadsPath,
-            bool debug,
-            ILoggerFactory loggerFactory)
+        public KrogerClientFactory(Func<KrogerClient> create)
         {
-            _downloadsPath = downloadsPath;
-            _debug = debug;
-            _loggerFactory = loggerFactory;
+            _create = create;
         }
 
-        public KrogerClient Create()
-        {
-            return new KrogerClient(
-                _downloadsPath,
-                _debug,
-                _loggerFactory.CreateLogger<KrogerClient>());
-        }
+        public KrogerClient Create() => _create();
     }
 }

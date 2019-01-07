@@ -2,7 +2,7 @@
 using System.Globalization;
 using McMaster.Extensions.CommandLineUtils.Abstractions;
 
-namespace KrogerScrape.Support
+namespace KrogerScrape.Settings
 {
     public class MarkerObjectValueParser<T> : IValueParser<T>
     {

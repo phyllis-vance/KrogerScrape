@@ -1,47 +1,39 @@
 ﻿using System;
 using System.Threading;
+using System.Threading.Tasks;
 using KrogerScrape.Client;
 using KrogerScrape.Entities;
 using KrogerScrape.Logic;
+using KrogerScrape.Settings;
 using KrogerScrape.Support;
 using McMaster.Extensions.CommandLineUtils;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace KrogerScrape
 {
+
     public class Program
     {
         public static int Main(string[] args)
         {
-            var loggerFactory = new LoggerFactory(
-                providers: new[] { new MinimalConsoleLoggerProvider() },
-                filterOptions: new LoggerFilterOptions { MinLevel = LogLevel.Trace });
-            var logger = loggerFactory.CreateLogger<Program>();
-
-            var cts = new CancellationTokenSource();
-            var cancelled = 0;
-            var cancelledSemaphore = new SemaphoreSlim(0);
-            Console.CancelKeyPress += (sender, e) =>
-            {
-                if (Interlocked.CompareExchange(ref cancelled, 1, 0) == 1)
-                {
-                    e.Cancel = false;
-                }
-                else
-                {
-                    logger.LogWarning("Cancelling. Press Ctrl + C again to terminate.");
-                    e.Cancel = true;
-                    cts.Cancel();
-                }
-            };
-
-            var app = new CommandLineApplication();
-
-            ConfigureApplication(app, loggerFactory, logger, cts.Token);
-
+            ILogger logger = new MinimalConsoleLogger();
             try
             {
-                return app.Execute(args);
+                using (var serviceProvider = GetServiceProvider())
+                {
+                    logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+
+                    var token = GetCancellationToken(logger);
+
+                    var app = new CommandLineApplication();
+
+                    ConfigureApplication(app, serviceProvider, logger, token);
+
+                    return app.Execute(args);
+                }
             }
             catch (OperationCanceledException ex)
             {
@@ -60,10 +52,70 @@ namespace KrogerScrape
             }
         }
 
+        private static CancellationToken GetCancellationToken(ILogger logger)
+        {
+            var cts = new CancellationTokenSource();
+            var cancelled = 0;
+            var cancelledSemaphore = new SemaphoreSlim(0);
+            Console.CancelKeyPress += (sender, e) =>
+            {
+                if (Interlocked.CompareExchange(ref cancelled, 1, 0) == 1)
+                {
+                    e.Cancel = false;
+                }
+                else
+                {
+                    logger.LogWarning("Cancelling. Press Ctrl + C again to terminate.");
+                    e.Cancel = true;
+                    cts.Cancel();
+                }
+            };
+
+            var token = cts.Token;
+            return token;
+        }
+
+        private static ServiceProvider GetServiceProvider()
+        {
+            var serviceCollection = new ServiceCollection();
+
+            serviceCollection.AddLogging(lb => lb
+                .AddProvider(new MinimalConsoleLoggerProvider())
+                .SetMinimumLevel(LogLevel.Trace)
+                .AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning));
+
+            serviceCollection.AddTransient(sp => new EntityContextFactory(() => sp.GetRequiredService<IEntityContext>()));
+            serviceCollection.AddDbContext<SqliteEntityContext>(
+                (sp, ob) =>
+                {
+                    var settings = sp.GetRequiredService<IKrogerScrapeSettings>();
+
+                    var builder = new SqliteConnectionStringBuilder();
+                    builder.DataSource = settings.DatabasePath;
+
+                    ob.UseSqlite(builder.ConnectionString);
+                },
+                contextLifetime: ServiceLifetime.Transient,
+                optionsLifetime: ServiceLifetime.Transient);
+            serviceCollection.AddTransient<IEntityContext>(sp => sp.GetRequiredService<SqliteEntityContext>());
+
+            serviceCollection.AddTransient<EntityRepository>();
+            serviceCollection.AddTransient<KrogerClient>();
+            serviceCollection.AddTransient(sp => new KrogerClientFactory(() => sp.GetRequiredService<KrogerClient>()));
+            serviceCollection.AddTransient<ScrapeCommand>();
+            serviceCollection.AddTransient<StopOrphansCommand>();
+
+            serviceCollection.AddSingleton<KrogerScrapeSettingsFactory>();
+            serviceCollection.AddTransient(sp => sp.GetRequiredService<KrogerScrapeSettingsFactory>().Create());
+            serviceCollection.AddTransient<IKrogerClientSettings>(sp => sp.GetRequiredService<KrogerScrapeSettingsFactory>().Create());
+
+            return serviceCollection.BuildServiceProvider();
+        }
+
         private static void ConfigureApplication(
             CommandLineApplication app,
-            LoggerFactory loggerFactory,
-            ILogger<Program> logger,
+            IServiceProvider serviceProvider,
+            ILogger logger,
             CancellationToken token)
         {
             app.FullName = "KrogerScrape";
@@ -83,14 +135,14 @@ namespace KrogerScrape
                 return 1;
             });
 
-            app.Command("scrape", c => ConfigureScrapeCommand(c, loggerFactory, logger, token));
-            app.Command("stop-orphans", c => ConfigureStopOrphansCommand(c, loggerFactory, logger));
+            app.Command("scrape", c => ConfigureScrapeCommand(c, serviceProvider, logger, token));
+            app.Command("stop-orphans", c => ConfigureStopOrphansCommand(c, serviceProvider, logger));
         }
 
         private static void ConfigureScrapeCommand(
             CommandLineApplication app,
-            ILoggerFactory loggerFactory,
-            ILogger<Program> logger,
+            IServiceProvider serviceProvider,
+            ILogger logger,
             CancellationToken token)
         {
             app.Description = "Log in to Kroger.com and download all available purchase history.";
@@ -118,7 +170,6 @@ namespace KrogerScrape
 
             app.OnExecute(async () =>
             {
-                var email = emailOption.Value().Trim();
                 string password;
                 if (passwordOption.HasValue())
                 {
@@ -137,69 +188,75 @@ namespace KrogerScrape
                     return 1;
                 }
 
-                logger.LogInformation("Initializing the {CommandName} command.", app.Name);
-
-                if (refetchOption.HasValue())
+                var settingsFactory = serviceProvider.GetRequiredService<KrogerScrapeSettingsFactory>();
+                settingsFactory.Initialize(new KrogerScrapeSettings
                 {
-                    logger.LogInformation("Both new receipts and receipts that have already been fetched will be fetched.");
-                }
-                else
-                {
-                    logger.LogInformation("Only new receipts will be fetched.");
-                }
+                    Email = emailOption.Value().Trim(),
+                    Password = password,
+                    Debug = debugOption.HasValue(),
+                    RefetchReceipts = refetchOption.HasValue(),
+                    DatabasePath = databasePathOption.GetDatabasePath(),
+                    DownloadsPath = downloadsPathOption.GetDownloadsPath(),
+                });
 
-                if (debugOption.HasValue())
-                {
-                    logger.LogInformation("Debug mode is enabled.");
-                }
-
-                var downloadsPath = downloadsPathOption.GetDownloadsPath();
-                logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", downloadsPath);
-
-                var databasePath = databasePathOption.GetDatabasePath();
-                logger.LogDebug($"Using database path:{Environment.NewLine}{{DatabasePath}}", databasePath);
-
-                var entityContextFactory = new EntityContextFactory(databasePath, loggerFactory);
-                using (var entityContext = entityContextFactory.Get())
-                {
-                    await entityContext.MigrateAsync(token);
-                }
-
-                var entityRepository = new EntityRepository(entityContextFactory);
-
-                var krogerClientFactory = new KrogerClientFactory(
-                    downloadsPath,
-                    debugOption.HasValue(),
-                    loggerFactory);
-
-                var scrapeCommand = new ScrapeCommand(
-                    entityRepository,
-                    krogerClientFactory,
-                    loggerFactory.CreateLogger<ScrapeCommand>());
-
-                var success = await scrapeCommand.ExecuteAsync(
-                    email,
-                    password,
-                    refetchOption.HasValue(),
-                    token);
-
-                if (success)
-                {
-                    logger.LogInformation("The {CommandName} command has completed successfully.", app.Name);
-                    return 0;
-                }
-                else
-                {
-                    logger.LogInformation("The {CommandName} command has failed.", app.Name);
-                    return 1;
-                }
+                return await ExecuteScrapeCommandAsync(app.Name, serviceProvider, logger, token);
             });
+        }
+
+        private static async Task<int> ExecuteScrapeCommandAsync(
+            string commandName,
+            IServiceProvider serviceProvider,
+            ILogger logger,
+            CancellationToken token)
+        {
+            logger.LogDebug("Initializing the {CommandName} command.", commandName);
+
+            var settings = serviceProvider.GetRequiredService<IKrogerScrapeSettings>();
+            if (settings.RefetchReceipts)
+            {
+                logger.LogInformation("Both new receipts and receipts that have already been fetched will be fetched.");
+            }
+            else
+            {
+                logger.LogInformation("Only new receipts will be fetched.");
+            }
+
+            if (settings.Debug)
+            {
+                logger.LogInformation("Debug mode is enabled.");
+            }
+
+            logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", settings.DownloadsPath);
+            logger.LogDebug($"Using database path:{Environment.NewLine}{{DatabasePath}}", settings.DatabasePath);
+
+            var entityContextFactory = serviceProvider.GetRequiredService<EntityContextFactory>();
+            using (var entityContext = entityContextFactory.Create())
+            {
+                await entityContext.MigrateAsync(token);
+            }
+
+            var command = serviceProvider.GetRequiredService<ScrapeCommand>();
+
+            logger.LogDebug("Executing the {CommandName} command.", commandName);
+
+            var success = await command.ExecuteAsync(token);
+
+            if (success)
+            {
+                logger.LogInformation("The {CommandName} command has completed successfully.", commandName);
+                return 0;
+            }
+            else
+            {
+                logger.LogError("The {CommandName} command has failed.", commandName);
+                return 1;
+            }
         }
 
         private static void ConfigureStopOrphansCommand(
             CommandLineApplication app,
-            ILoggerFactory loggerFactory,
-            ILogger<Program> logger)
+            IServiceProvider serviceProvider,
+            ILogger logger)
         {
             app.Description = "Stop orphan Chromium processes.";
 
@@ -208,24 +265,32 @@ namespace KrogerScrape
 
             app.OnExecute(() =>
             {
-                logger.LogInformation("Initializing the {CommandName} command.", app.Name);
+                var settingsFactory = serviceProvider.GetRequiredService<KrogerScrapeSettingsFactory>();
+                settingsFactory.Initialize(new KrogerScrapeSettings
+                {
+                    DownloadsPath = downloadsPathOption.GetDownloadsPath(),
+                });
 
-                var downloadsPath = downloadsPathOption.GetDownloadsPath();
-                logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", downloadsPath);
-
-                var krogerClientFactory = new KrogerClientFactory(
-                    downloadsPath,
-                    debug: false,
-                    loggerFactory: loggerFactory);
-
-                var stopOrphansCommand = new StopOrphansCommand(krogerClientFactory);
-
-                stopOrphansCommand.Execute();
-
-                logger.LogInformation("The {CommandName} command has completed.", app.Name);
-
-                return 0;
+                return ExecuteStopOrphansCommand(app.Name, serviceProvider, logger);
             });
+        }
+
+        private static int ExecuteStopOrphansCommand(string commandName, IServiceProvider serviceProvider, ILogger logger)
+        {
+            logger.LogDebug("Initializing the {CommandName} command.", commandName);
+
+            var settings = serviceProvider.GetRequiredService<IKrogerScrapeSettings>();
+            logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", settings.DownloadsPath);
+
+            var command = serviceProvider.GetRequiredService<StopOrphansCommand>();
+
+            logger.LogDebug("Executing the {CommandName} command.", commandName);
+
+            command.Execute();
+
+            logger.LogInformation("The {CommandName} command has completed.", commandName);
+
+            return 0;
         }
     }
 }

@@ -24,7 +24,7 @@ namespace KrogerScrape.Logic
             string email,
             CancellationToken token)
         {
-            using (var entityContext = _entityContextFactory.Get())
+            using (var entityContext = _entityContextFactory.Create())
             {
                 var entity = await entityContext
                    .Users
@@ -48,7 +48,7 @@ namespace KrogerScrape.Logic
             ReceiptId receiptId,
             CancellationToken token)
         {
-            using (var entityContext = _entityContextFactory.Get())
+            using (var entityContext = _entityContextFactory.Create())
             {
                 var entity = await entityContext
                     .ReceiptIds
@@ -87,7 +87,7 @@ namespace KrogerScrape.Logic
             Response response,
             CancellationToken token)
         {
-            using (var entityContext = _entityContextFactory.Get())
+            using (var entityContext = _entityContextFactory.Create())
             {
                 var uncompressedBytes = Encoding.UTF8.GetBytes(response.Body);
                 var compressedBytes = CompressionUtility.Compress(uncompressedBytes);
@@ -114,7 +114,7 @@ namespace KrogerScrape.Logic
             long userEntityId,
             CancellationToken token)
         {
-            using (var entityContext = _entityContextFactory.Get())
+            using (var entityContext = _entityContextFactory.Create())
             {
                 var entity = new CommandEntity
                 {
@@ -133,7 +133,7 @@ namespace KrogerScrape.Logic
             long commandEntityId,
             CancellationToken token)
         {
-            using (var entityContext = _entityContextFactory.Get())
+            using (var entityContext = _entityContextFactory.Create())
             {
                 var entity = new SignInEntity
                 {
@@ -152,7 +152,7 @@ namespace KrogerScrape.Logic
             long commandEntityId,
             CancellationToken token)
         {
-            using (var entityContext = _entityContextFactory.Get())
+            using (var entityContext = _entityContextFactory.Create())
             {
                 var entity = new GetReceiptSummariesEntity
                 {
@@ -172,7 +172,7 @@ namespace KrogerScrape.Logic
             long receiptEntityId,
             CancellationToken token)
         {
-            using (var entityContext = _entityContextFactory.Get())
+            using (var entityContext = _entityContextFactory.Create())
             {
                 var entity = new GetReceiptEntity
                 {
@@ -192,7 +192,7 @@ namespace KrogerScrape.Logic
             OperationEntity operationEntity,
             CancellationToken token)
         {
-            using (var entityContext = _entityContextFactory.Get())
+            using (var entityContext = _entityContextFactory.Create())
             {
                 entityContext.Operations.Attach(operationEntity);
                 operationEntity.CompletedTimestamp = DateTimeOffset.UtcNow;
