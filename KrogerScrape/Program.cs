@@ -15,7 +15,6 @@ using Microsoft.Extensions.Logging;
 
 namespace KrogerScrape
 {
-
     public class Program
     {
         public static int Main(string[] args)
