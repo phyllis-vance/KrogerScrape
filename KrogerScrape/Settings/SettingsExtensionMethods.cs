@@ -1,11 +1,15 @@
 ﻿using System;
 using System.IO;
 using McMaster.Extensions.CommandLineUtils;
+using Microsoft.Extensions.Logging;
 
 namespace KrogerScrape.Settings
 {
-    public static class ExtensionMethods
+    public static class SettingsExtensionMethods
     {
+        public const string LogLevelLongOption = "--log-level";
+        public const LogLevel DefaultLogLevel = LogLevel.Information;
+
         private static string GetDefaultDatabasePath()
         {
             return Path.Combine(GetDefaultBaseDirectory(), "KrogerScrape.sqlite3");
@@ -21,11 +25,27 @@ namespace KrogerScrape.Settings
             return Directory.GetCurrentDirectory();
         }
 
+        public static CommandOption<LogLevel> LogLevelOption(this CommandLineApplication app)
+        {
+            return app.Option<LogLevel>(
+                $"{LogLevelLongOption} <LEVEL>",
+                $"The minimum log level to show.{Environment.NewLine}" +
+                $"Options: {string.Join(", ", Enum.GetNames(typeof(LogLevel)))}{Environment.NewLine}" +
+                $"Default: {DefaultLogLevel}",
+                CommandOptionType.SingleValue);
+        }
+
+        public static LogLevel GetLogLevel(this CommandOption<LogLevel> option)
+        {
+            return option.HasValue() ? option.ParsedValue : DefaultLogLevel;
+        }
+
         public static CommandOption<DatabasePath> DatabasePathOption(this CommandLineApplication app)
         {
             return app.Option<DatabasePath>(
                 "--database-path <PATH>",
-                $"The path to the database path.{Environment.NewLine}Default: {GetDefaultDatabasePath()}",
+                $"The path to the database path.{Environment.NewLine}" +
+                $"Default: {GetDefaultDatabasePath()}",
                 CommandOptionType.SingleValue);
         }
 
@@ -33,7 +53,8 @@ namespace KrogerScrape.Settings
         {
             return app.Option<DownloadsPath>(
                 "--downloads-path <DIR>",
-                $"The path to the where downloads (e.g. Chromium) should go.{Environment.NewLine}Default: {GetDefaultDownloadsPath()}",
+                $"The path to the where downloads (e.g. Chromium) should go.{Environment.NewLine}" +
+                $"Default: {GetDefaultDownloadsPath()}",
                 CommandOptionType.SingleValue);
         }
 

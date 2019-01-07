@@ -293,7 +293,7 @@ function () {
                             .GroupBy(x => x)
                             .OrderByDescending(x => x.Count())
                             .ThenBy(x => x.Key, StringComparer.Ordinal)
-                            .Select(x => $"  - {x.Key} (count: {x.Count()})"));
+                            .Select(x => $"{x.Key} (count: {x.Count()})"));
 
                     _logger.LogWarning(
                         $"Found {{Count}} orphan Chromium processes with the following file names:{Environment.NewLine}{{FileNameList}}",
@@ -318,7 +318,7 @@ function () {
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogWarning(ex, "Failed to stop process {ProcessId}.", process.Id);
+                                _logger.LogDebug(ex, "Failed to stop process {ProcessId}.", process.Id);
                             }
                         }
                     }

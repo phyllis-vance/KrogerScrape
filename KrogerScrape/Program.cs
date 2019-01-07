@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using KrogerScrape.Client;
@@ -22,7 +23,8 @@ namespace KrogerScrape
             ILogger logger = new MinimalConsoleLogger();
             try
             {
-                using (var serviceProvider = GetServiceProvider())
+                var minimumLogLevel = GetMinimumLogLevel(args, logger);
+                using (var serviceProvider = GetServiceProvider(minimumLogLevel))
                 {
                     logger = serviceProvider.GetRequiredService<ILogger<Program>>();
 
@@ -37,7 +39,7 @@ namespace KrogerScrape
             }
             catch (OperationCanceledException ex)
             {
-                logger.LogWarning(ex, "Cancelled.");
+                logger.LogDebug(ex, "Cancelled.");
                 return 1;
             }
             catch (CommandParsingException ex)
@@ -49,6 +51,28 @@ namespace KrogerScrape
             {
                 logger.LogError(ex, "Unhandled exception.");
                 return 1;
+            }
+        }
+
+        private static LogLevel GetMinimumLogLevel(string[] args, ILogger logger)
+        {
+            var app = new CommandLineApplication();
+            app.ThrowOnUnexpectedArgument = false;
+            var logLevelOption = app.LogLevelOption();
+
+            var skippedArgs = args
+                .SkipWhile(a => !a.Contains(logLevelOption.LongName))
+                .ToArray();
+
+            try
+            {
+                app.Parse(skippedArgs);
+                return logLevelOption.GetLogLevel();
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "The log level failed to be parsed.");
+                return SettingsExtensionMethods.DefaultLogLevel;
             }
         }
 
@@ -75,13 +99,13 @@ namespace KrogerScrape
             return token;
         }
 
-        private static ServiceProvider GetServiceProvider()
+        private static ServiceProvider GetServiceProvider(LogLevel minimumLogLevel)
         {
             var serviceCollection = new ServiceCollection();
 
             serviceCollection.AddLogging(lb => lb
                 .AddProvider(new MinimalConsoleLoggerProvider())
-                .SetMinimumLevel(LogLevel.Trace)
+                .SetMinimumLevel(minimumLogLevel)
                 .AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning));
 
             serviceCollection.AddTransient(sp => new EntityContextFactory(() => sp.GetRequiredService<IEntityContext>()));
@@ -124,6 +148,7 @@ namespace KrogerScrape
 
             app.ValueParsers.Add(new MarkerObjectValueParser<DownloadsPath>());
             app.ValueParsers.Add(new MarkerObjectValueParser<DatabasePath>());
+            app.LogLevelOption();
             var versionOption = app.VersionOptionFromAssemblyAttributes(typeof(Program).Assembly);
             versionOption.Description = "Show version information.";
             app.CustomHelpOption();
@@ -166,6 +191,7 @@ namespace KrogerScrape
                 CommandOptionType.NoValue);
             var downloadsPathOption = app.DownloadsPathOption();
             var databasePathOption = app.DatabasePathOption();
+            app.LogLevelOption();
             app.CustomHelpOption();
 
             app.OnExecute(async () =>
@@ -261,6 +287,7 @@ namespace KrogerScrape
             app.Description = "Stop orphan Chromium processes.";
 
             var downloadsPathOption = app.DownloadsPathOption();
+            app.LogLevelOption();
             app.CustomHelpOption();
 
             app.OnExecute(() =>
