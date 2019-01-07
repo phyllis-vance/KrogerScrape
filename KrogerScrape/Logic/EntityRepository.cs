@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using KrogerScrape.Client;
 using KrogerScrape.Entities;
@@ -19,31 +20,37 @@ namespace KrogerScrape.Logic
             _entityContextFactory = entityContextFactory;
         }
 
-        public async Task<UserEntity> GetOrAddUserAsync(string email)
+        public async Task<UserEntity> GetOrAddUserAsync(
+            string email,
+            CancellationToken token)
         {
-            using (var entityContext = await _entityContextFactory.GetAsync())
+            using (var entityContext = _entityContextFactory.Get())
             {
-                var userEntity = await entityContext
+                var entity = await entityContext
                    .Users
                    .Where(x => x.Email == email)
-                   .FirstOrDefaultAsync();
+                   .FirstOrDefaultAsync(token);
 
-                if (userEntity == null)
+                if (entity == null)
                 {
-                    userEntity = new UserEntity { Email = email };
-                    entityContext.Users.Add(userEntity);
-                    await entityContext.SaveChangesAsync();
+                    entity = new UserEntity { Email = email };
+
+                    await entityContext.Users.AddAsync(entity, token);
+                    await entityContext.SaveChangesAsync(token);
                 }
 
-                return userEntity;
+                return entity;
             }
         }
 
-        public async Task<ReceiptIdEntity> GetOrAddReceiptIdAsync(long userEntityId, ReceiptId receiptId)
+        public async Task<ReceiptIdEntity> GetOrAddReceiptIdAsync(
+            long userEntityId,
+            ReceiptId receiptId,
+            CancellationToken token)
         {
-            using (var entityContext = await _entityContextFactory.GetAsync())
+            using (var entityContext = _entityContextFactory.Get())
             {
-                var receiptIdEntity = await entityContext
+                var entity = await entityContext
                     .ReceiptIds
                     .Include(x => x.GetReceiptOperationEntities)
                     .ThenInclude(x => x.ResponseEntities)
@@ -52,11 +59,11 @@ namespace KrogerScrape.Logic
                              && x.TransactionDate == receiptId.TransactionDate
                              && x.TerminalNumber == receiptId.TerminalNumber
                              && x.TransactionId == receiptId.TransactionId)
-                    .FirstOrDefaultAsync();
+                    .FirstOrDefaultAsync(token);
 
-                if (receiptIdEntity == null)
+                if (entity == null)
                 {
-                    receiptIdEntity = new ReceiptIdEntity
+                    entity = new ReceiptIdEntity
                     {
                         UserEntityId = userEntityId,
                         DivisionNumber = receiptId.DivisionNumber,
@@ -66,24 +73,28 @@ namespace KrogerScrape.Logic
                         TransactionId = receiptId.TransactionId,
                         GetReceiptOperationEntities = new List<GetReceiptEntity>(),
                     };
-                    entityContext.ReceiptIds.Add(receiptIdEntity);
-                    await entityContext.SaveChangesAsync();
+
+                    await entityContext.ReceiptIds.AddAsync(entity, token);
+                    await entityContext.SaveChangesAsync(token);
                 }
 
-                return receiptIdEntity;
+                return entity;
             }
         }
 
-        public async Task RecordResponseAsync(long operationEntityId, Response response)
+        public async Task RecordResponseAsync(
+            long operationEntityId,
+            Response response,
+            CancellationToken token)
         {
-            using (var entityContext = await _entityContextFactory.GetAsync())
+            using (var entityContext = _entityContextFactory.Get())
             {
                 var uncompressedBytes = Encoding.UTF8.GetBytes(response.Body);
                 var compressedBytes = CompressionUtility.Compress(uncompressedBytes);
                 var isCompressed = compressedBytes.Length < uncompressedBytes.Length;
                 var bytes = isCompressed ? compressedBytes : uncompressedBytes;
 
-                entityContext.Responses.Add(new ResponseEntity
+                var entity = new ResponseEntity
                 {
                     OperationEntityId = operationEntityId,
                     RequestType = response.RequestType,
@@ -92,15 +103,18 @@ namespace KrogerScrape.Logic
                     Url = response.Url,
                     CompressionType = isCompressed ? CompressionType.Gzip : CompressionType.None,
                     Body = bytes,
-                });
+                };
 
-                await entityContext.SaveChangesAsync();
+                await entityContext.Responses.AddAsync(entity, token);
+                await entityContext.SaveChangesAsync(token);
             }
         }
 
-        public async Task<CommandEntity> StartCommandAsync(long userEntityId)
+        public async Task<CommandEntity> StartCommandAsync(
+            long userEntityId,
+            CancellationToken token)
         {
-            using (var entityContext = await _entityContextFactory.GetAsync())
+            using (var entityContext = _entityContextFactory.Get())
             {
                 var entity = new CommandEntity
                 {
@@ -108,16 +122,18 @@ namespace KrogerScrape.Logic
                     StartedTimestamp = DateTimeOffset.UtcNow,
                 };
 
-                entityContext.Commands.Add(entity);
-                await entityContext.SaveChangesAsync();
+                await entityContext.Commands.AddAsync(entity, token);
+                await entityContext.SaveChangesAsync(token);
 
                 return entity;
             }
         }
 
-        public async Task<SignInEntity> StartSignInAsync(long commandEntityId)
+        public async Task<SignInEntity> StartSignInAsync(
+            long commandEntityId,
+            CancellationToken token)
         {
-            using (var entityContext = await _entityContextFactory.GetAsync())
+            using (var entityContext = _entityContextFactory.Get())
             {
                 var entity = new SignInEntity
                 {
@@ -125,16 +141,18 @@ namespace KrogerScrape.Logic
                     StartedTimestamp = DateTimeOffset.UtcNow,
                 };
 
-                entityContext.SignIns.Add(entity);
-                await entityContext.SaveChangesAsync();
+                await entityContext.SignIns.AddAsync(entity, token);
+                await entityContext.SaveChangesAsync(token);
 
                 return entity;
             }
         }
 
-        public async Task<GetReceiptSummariesEntity> StartGetReceiptSummariesAsync(long commandEntityId)
+        public async Task<GetReceiptSummariesEntity> StartGetReceiptSummariesAsync(
+            long commandEntityId,
+            CancellationToken token)
         {
-            using (var entityContext = await _entityContextFactory.GetAsync())
+            using (var entityContext = _entityContextFactory.Get())
             {
                 var entity = new GetReceiptSummariesEntity
                 {
@@ -142,8 +160,8 @@ namespace KrogerScrape.Logic
                     StartedTimestamp = DateTimeOffset.UtcNow,
                 };
 
-                entityContext.Operations.Add(entity);
-                await entityContext.SaveChangesAsync();
+                await entityContext.Operations.AddAsync(entity, token);
+                await entityContext.SaveChangesAsync(token);
 
                 return entity;
             }
@@ -151,9 +169,10 @@ namespace KrogerScrape.Logic
 
         public async Task<GetReceiptEntity> StartGetReceiptAsync(
             long commandEntityId,
-            long receiptEntityId)
+            long receiptEntityId,
+            CancellationToken token)
         {
-            using (var entityContext = await _entityContextFactory.GetAsync())
+            using (var entityContext = _entityContextFactory.Get())
             {
                 var entity = new GetReceiptEntity
                 {
@@ -162,20 +181,22 @@ namespace KrogerScrape.Logic
                     StartedTimestamp = DateTimeOffset.UtcNow,
                 };
 
-                entityContext.Operations.Add(entity);
-                await entityContext.SaveChangesAsync();
+                await entityContext.Operations.AddAsync(entity);
+                await entityContext.SaveChangesAsync(token);
 
                 return entity;
             }
         }
 
-        public async Task CompleteOperationAsync(OperationEntity operationEntity)
+        public async Task CompleteOperationAsync(
+            OperationEntity operationEntity,
+            CancellationToken token)
         {
-            using (var entityContext = await _entityContextFactory.GetAsync())
+            using (var entityContext = _entityContextFactory.Get())
             {
                 entityContext.Operations.Attach(operationEntity);
                 operationEntity.CompletedTimestamp = DateTimeOffset.UtcNow;
-                await entityContext.SaveChangesAsync();
+                await entityContext.SaveChangesAsync(token);
             }
         }
     }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using KrogerScrape.Client;
 using KrogerScrape.Entities;
 using KrogerScrape.Logic;
@@ -17,13 +18,35 @@ namespace KrogerScrape
                 filterOptions: new LoggerFilterOptions { MinLevel = LogLevel.Trace });
             var logger = loggerFactory.CreateLogger<Program>();
 
+            var cts = new CancellationTokenSource();
+            var cancelled = 0;
+            var cancelledSemaphore = new SemaphoreSlim(0);
+            Console.CancelKeyPress += (sender, e) =>
+            {
+                if (Interlocked.CompareExchange(ref cancelled, 1, 0) == 1)
+                {
+                    e.Cancel = false;
+                }
+                else
+                {
+                    logger.LogWarning("Cancelling. Press Ctrl + C again to terminate.");
+                    e.Cancel = true;
+                    cts.Cancel();
+                }
+            };
+
             var app = new CommandLineApplication();
 
-            ConfigureApplication(app, loggerFactory, logger);
+            ConfigureApplication(app, loggerFactory, logger, cts.Token);
 
             try
             {
                 return app.Execute(args);
+            }
+            catch (OperationCanceledException ex)
+            {
+                logger.LogWarning(ex, "Cancelled.");
+                return 1;
             }
             catch (CommandParsingException ex)
             {
@@ -37,7 +60,11 @@ namespace KrogerScrape
             }
         }
 
-        private static void ConfigureApplication(CommandLineApplication app, LoggerFactory loggerFactory, ILogger<Program> logger)
+        private static void ConfigureApplication(
+            CommandLineApplication app,
+            LoggerFactory loggerFactory,
+            ILogger<Program> logger,
+            CancellationToken token)
         {
             app.FullName = "KrogerScrape";
             app.Name = app.FullName;
@@ -56,11 +83,15 @@ namespace KrogerScrape
                 return 1;
             });
 
-            app.Command("scrape", c => ConfigureScrapeCommand(c, loggerFactory, logger));
+            app.Command("scrape", c => ConfigureScrapeCommand(c, loggerFactory, logger, token));
             app.Command("stop-orphans", c => ConfigureStopOrphansCommand(c, loggerFactory, logger));
         }
 
-        private static void ConfigureScrapeCommand(CommandLineApplication app, ILoggerFactory loggerFactory, ILogger<Program> logger)
+        private static void ConfigureScrapeCommand(
+            CommandLineApplication app,
+            ILoggerFactory loggerFactory,
+            ILogger<Program> logger,
+            CancellationToken token)
         {
             app.Description = "Log in to Kroger.com and download all available purchase history.";
 
@@ -129,9 +160,9 @@ namespace KrogerScrape
                 logger.LogDebug($"Using database path:{Environment.NewLine}{{DatabasePath}}", databasePath);
 
                 var entityContextFactory = new EntityContextFactory(databasePath, loggerFactory);
-                using (var entityContext = await entityContextFactory.GetAsync())
+                using (var entityContext = entityContextFactory.Get())
                 {
-                    await entityContext.MigrateAsync();
+                    await entityContext.MigrateAsync(token);
                 }
 
                 var entityRepository = new EntityRepository(entityContextFactory);
@@ -146,25 +177,36 @@ namespace KrogerScrape
                     krogerClientFactory,
                     loggerFactory.CreateLogger<ScrapeCommand>());
 
-                await scrapeCommand.ExecuteAsync(
+                var success = await scrapeCommand.ExecuteAsync(
                     email,
                     password,
-                    refetchOption.HasValue());
+                    refetchOption.HasValue(),
+                    token);
 
-                logger.LogInformation("The {CommandName} command has completed.", app.Name);
-
-                return 0;
+                if (success)
+                {
+                    logger.LogInformation("The {CommandName} command has completed successfully.", app.Name);
+                    return 0;
+                }
+                else
+                {
+                    logger.LogInformation("The {CommandName} command has failed.", app.Name);
+                    return 1;
+                }
             });
         }
 
-        private static void ConfigureStopOrphansCommand(CommandLineApplication app, ILoggerFactory loggerFactory, ILogger<Program> logger)
+        private static void ConfigureStopOrphansCommand(
+            CommandLineApplication app,
+            ILoggerFactory loggerFactory,
+            ILogger<Program> logger)
         {
             app.Description = "Stop orphan Chromium processes.";
 
             var downloadsPathOption = app.DownloadsPathOption();
             app.CustomHelpOption();
 
-            app.OnExecute(async () =>
+            app.OnExecute(() =>
             {
                 logger.LogInformation("Initializing the {CommandName} command.", app.Name);
 
@@ -178,7 +220,7 @@ namespace KrogerScrape
 
                 var stopOrphansCommand = new StopOrphansCommand(krogerClientFactory);
 
-                await stopOrphansCommand.ExecuteAsync();
+                stopOrphansCommand.Execute();
 
                 logger.LogInformation("The {CommandName} command has completed.", app.Name);
 

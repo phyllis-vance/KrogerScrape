@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +15,7 @@ namespace KrogerScrape.Entities
         DbSet<ResponseEntity> Responses { get; }
         DbSet<SignInEntity> SignIns { get; }
         DbSet<UserEntity> Users { get; }
-        Task<int> SaveChangesAsync();
-        Task MigrateAsync();
+        Task<int> SaveChangesAsync(CancellationToken token);
+        Task MigrateAsync(CancellationToken token);
     }
 }

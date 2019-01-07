@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using KrogerScrape.Client;
 using KrogerScrape.Entities;
@@ -25,12 +26,16 @@ namespace KrogerScrape.Logic
             _logger = logger;
         }
 
-        public async Task ExecuteAsync(string email, string password, bool fetchAgain)
+        public async Task<bool> ExecuteAsync(
+            string email,
+            string password,
+            bool fetchAgain,
+            CancellationToken token)
         {
             using (var krogerClient = _krogerClientFactory.Create())
             {
-                var userEntity = await _entityRepository.GetOrAddUserAsync(email);
-                var commandEntity = await _entityRepository.StartCommandAsync(userEntity.Id);
+                var userEntity = await _entityRepository.GetOrAddUserAsync(email, token);
+                var commandEntity = await _entityRepository.StartCommandAsync(userEntity.Id, token);
 
                 SignInEntity signIn = null;
                 GetReceiptSummariesEntity getReceiptSummaries = null;
@@ -54,7 +59,7 @@ namespace KrogerScrape.Logic
                                 return;
                         }
 
-                        await _entityRepository.RecordResponseAsync(operationEntity.Id, response);
+                        await _entityRepository.RecordResponseAsync(operationEntity.Id, response, CancellationToken.None);
                     });
 
                 try
@@ -62,19 +67,35 @@ namespace KrogerScrape.Logic
                     krogerClient.KillOrphanBrowsers();
                     await krogerClient.InitializeAsync();
 
+                    token.ThrowIfCancellationRequested();
                     _logger.LogInformation("Logging in with email address {Email}.", email);
-                    signIn = await _entityRepository.StartSignInAsync(commandEntity.Id);
-                    var signInResponse = await krogerClient.SignInAsync(email, password);
-                    await _entityRepository.CompleteOperationAsync(signIn);
-                    if (signInResponse?.AuthenticationState?.Authenticated == false)
+                    signIn = await _entityRepository.StartSignInAsync(commandEntity.Id, token);
+                    var signInResponse = await krogerClient.SignInAsync(email, password, token);
+                    await _entityRepository.CompleteOperationAsync(signIn, token);
+
+                    if (signInResponse == null)
                     {
-                        throw new InvalidOperationException("The sign in operation did not succeed.");
+                        _logger.LogError("No sign in data was found.");
+                        return false;
                     }
 
+                    if (signInResponse.AuthenticationState?.Authenticated != true)
+                    {
+                        _logger.LogError("The sign in was not successful. Verify your email and password.");
+                        return false;
+                    }
+
+                    token.ThrowIfCancellationRequested();
                     _logger.LogInformation("Fetching the receipt summaries.");
-                    getReceiptSummaries = await _entityRepository.StartGetReceiptSummariesAsync(commandEntity.Id);
-                    var receiptSummaries = await krogerClient.GetReceiptSummariesAsync();
-                    await _entityRepository.CompleteOperationAsync(getReceiptSummaries);
+                    getReceiptSummaries = await _entityRepository.StartGetReceiptSummariesAsync(commandEntity.Id, token);
+                    var receiptSummaries = await krogerClient.GetReceiptSummariesAsync(token);
+                    await _entityRepository.CompleteOperationAsync(getReceiptSummaries, token);
+
+                    if (receiptSummaries == null)
+                    {
+                        _logger.LogError("No receipt summary data was found.");
+                        return false;
+                    }
 
                     _logger.LogInformation("Found {Count} receipts. Processing them from oldest to newest.", receiptSummaries.Count);
                     var ascendingChronological = receiptSummaries
@@ -84,6 +105,8 @@ namespace KrogerScrape.Logic
                     var receiptNumber = 0;
                     foreach (var receiptSummary in ascendingChronological)
                     {
+                        token.ThrowIfCancellationRequested();
+
                         receiptNumber++;
 
                         var receiptId = receiptSummary.ReceiptId;
@@ -97,7 +120,7 @@ namespace KrogerScrape.Logic
                             continue;
                         }
 
-                        var receiptIdEntity = await _entityRepository.GetOrAddReceiptIdAsync(userEntity.Id, receiptId);
+                        var receiptIdEntity = await _entityRepository.GetOrAddReceiptIdAsync(userEntity.Id, receiptId, token);
                         if (!fetchAgain
                             && receiptIdEntity
                                 .GetReceiptOperationEntities
@@ -120,10 +143,16 @@ namespace KrogerScrape.Logic
                             receiptUrl,
                             receiptId.TransactionDate);
 
-                        var getReceipt = await _entityRepository.StartGetReceiptAsync(commandEntity.Id, receiptIdEntity.Id);
+                        var getReceipt = await _entityRepository.StartGetReceiptAsync(commandEntity.Id, receiptIdEntity.Id, token);
                         getReceipts[receiptId] = getReceipt;
-                        var receipt = await krogerClient.GetReceiptAsync(receiptId);
-                        await _entityRepository.CompleteOperationAsync(getReceipt);
+                        var receipt = await krogerClient.GetReceiptAsync(receiptId, token);
+                        await _entityRepository.CompleteOperationAsync(getReceipt, token);
+
+                        if (receipt == null)
+                        {
+                            _logger.LogError("No receipt data was found for {{ReceiptUrl}}.", receiptUrl);
+                            return false;
+                        }
 
                         _logger.LogInformation(
                             "Done. The receipt had {ItemCount} items, totaling {Amount}.",
@@ -146,7 +175,9 @@ namespace KrogerScrape.Logic
                 }
 
                 await krogerClient.CompleteAsync();
-                await _entityRepository.CompleteOperationAsync(commandEntity);
+                await _entityRepository.CompleteOperationAsync(commandEntity, token);
+
+                return true;
             }
         }
     }

@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using KrogerScrape.Support;
 using Microsoft.Extensions.Logging;
@@ -51,6 +52,8 @@ namespace KrogerScrape.Client
         private readonly ConcurrentQueue<Func<Response, Task>> _listeners;
         private readonly Lazy<Task<Browser>> _lazyBrowser;
         private Browser _browserForDispose;
+        private bool _disposed;
+        private bool _signedIn;
 
         public KrogerClient(
             string downloadsPath,
@@ -318,7 +321,7 @@ function () {
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogWarning(ex, "Failed to kill this process.");
+                                _logger.LogWarning(ex, "Failed to stop process {ProcessId}.", process.Id);
                             }
                         }
                     }
@@ -342,13 +345,21 @@ function () {
 
         public async Task InitializeAsync()
         {
+            ThrowIfDisposed();
+
             using (var page = await GetPageAsync())
             {
             }
         }
 
-        public async Task<SignInResponse> SignInAsync(string email, string password)
+        public async Task<SignInResponse> SignInAsync(string email, string password, CancellationToken token)
         {
+            ThrowIfDisposed();
+            if (_signedIn)
+            {
+                throw new InvalidOperationException("The user is already signed in.");
+            }
+
             using (var page = await GetPageAsync())
             using (var captureState = new CaptureState(
                 OperationType.SignIn,
@@ -365,6 +376,8 @@ function () {
                         WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
                     });
 
+                token.ThrowIfCancellationRequested();
+
                 await CaptureScreenshotIfDebugAsync(page, nameof(SignInAsync));
 
                 await page.TypeAsync("#SignIn-emailInput", email);
@@ -377,11 +390,17 @@ function () {
                         WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
                     });
 
+                token.ThrowIfCancellationRequested();
+
                 await captureState.WaitForCompletionAsync();
 
-                return captureState
+                var response = captureState
                     .GetValues<SignInResponse>()
-                    .Last();
+                    .LastOrDefault();
+
+                _signedIn = response?.AuthenticationState?.Authenticated == true;
+
+                return response;
             }
         }
 
@@ -420,8 +439,11 @@ function () {
             }
         }
 
-        public async Task<List<Receipt>> GetReceiptSummariesAsync()
+        public async Task<List<Receipt>> GetReceiptSummariesAsync(CancellationToken token)
         {
+            ThrowIfDisposed();
+            ThrowIfNotSignedIn();
+
             using (var page = await GetPageAsync())
             using (var captureState = new CaptureState(
                 OperationType.GetReceiptSummaries,
@@ -446,7 +468,7 @@ function () {
 
                 return captureState
                     .GetValues<List<Receipt>>()
-                    .Last();
+                    .LastOrDefault();
             }
         }
 
@@ -468,8 +490,11 @@ function () {
             };
         }
 
-        public async Task<Receipt> GetReceiptAsync(ReceiptId receiptId)
+        public async Task<Receipt> GetReceiptAsync(ReceiptId receiptId, CancellationToken token)
         {
+            ThrowIfDisposed();
+            ThrowIfNotSignedIn();
+
             var pageUrl = GetReceiptUrl(receiptId);
 
             using (var page = await GetPageAsync())
@@ -488,6 +513,7 @@ function () {
                         WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
                     });
 
+                token.ThrowIfCancellationRequested();
 
                 await CaptureScreenshotIfDebugAsync(
                     page,
@@ -497,12 +523,29 @@ function () {
 
                 return captureState
                     .GetValues<Receipt>()
-                    .Last();
+                    .LastOrDefault();
+            }
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(nameof(KrogerClient));
+            }
+        }
+
+        private void ThrowIfNotSignedIn()
+        {
+            if (!_signedIn)
+            {
+                throw new InvalidOperationException("The user is not signed in.");
             }
         }
 
         public void Dispose()
         {
+            _disposed = true;
             _browserForDispose?.Dispose();
         }
     }

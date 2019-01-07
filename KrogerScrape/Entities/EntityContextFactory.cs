@@ -1,5 +1,4 @@
-﻿using System.Threading.Tasks;
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -16,7 +15,7 @@ namespace KrogerScrape.Entities
             _loggerFactory = loggerFactory;
         }
 
-        public Task<IEntityContext> GetAsync()
+        public IEntityContext Get()
         {
             var builder = new SqliteConnectionStringBuilder();
             builder.DataSource = _databasePath;
@@ -29,7 +28,7 @@ namespace KrogerScrape.Entities
                 options,
                 _loggerFactory.CreateLogger<SqliteEntityContext>());
 
-            return Task.FromResult<IEntityContext>(entityContext);
+            return entityContext;
         }
     }
 }

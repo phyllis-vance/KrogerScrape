@@ -1,5 +1,4 @@
-﻿using System.Threading.Tasks;
-using KrogerScrape.Client;
+﻿using KrogerScrape.Client;
 
 namespace KrogerScrape.Logic
 {
@@ -12,14 +11,12 @@ namespace KrogerScrape.Logic
             _krogerClientFactory = krogerClientFactory;
         }
 
-        public Task ExecuteAsync()
+        public void Execute()
         {
             using (var krogerClient = _krogerClientFactory.Create())
             {
                 krogerClient.KillOrphanBrowsers();
             }
-
-            return Task.CompletedTask;
         }
     }
 }

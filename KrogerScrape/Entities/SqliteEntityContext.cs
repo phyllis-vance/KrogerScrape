@@ -27,10 +27,10 @@ namespace KrogerScrape.Entities
         public DbSet<ReceiptIdEntity> ReceiptIds { get; set; }
         public DbSet<ResponseEntity> Responses { get; set; }
 
-        public async Task MigrateAsync()
+        public async Task MigrateAsync(CancellationToken token)
         {
-            var appliedMigrations = await Database.GetAppliedMigrationsAsync();
-            var pendingMigrations = await Database.GetPendingMigrationsAsync();
+            var appliedMigrations = await Database.GetAppliedMigrationsAsync(token);
+            var pendingMigrations = await Database.GetPendingMigrationsAsync(token);
             if (!appliedMigrations.Any())
             {
                 _logger.LogInformation("The database needs to be initialized.");
@@ -44,13 +44,8 @@ namespace KrogerScrape.Entities
                 return;
             }
 
-            await Database.MigrateAsync();
+            await Database.MigrateAsync(token);
             _logger.LogInformation("The database is now ready.");
-        }
-
-        public async Task<int> SaveChangesAsync()
-        {
-            return await SaveChangesAsync(CancellationToken.None);
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
