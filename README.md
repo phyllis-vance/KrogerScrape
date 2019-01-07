@@ -15,6 +15,10 @@ Fry's, QFC, Fred Meyer, Ralph's, etc.
 1. Export data to CSV
 1. Generate reports
 
+## Requirements
+
+.NET Core 2.0 or newer.
+
 ## Example
 
 ```
