@@ -128,7 +128,7 @@ namespace KrogerScrape.Client
                 if (args.Response.Request.Method == method
                     && args.Response.Request.Url == url)
                 {
-                    _logger.LogDebug("Received a response for {Method} {Url}", method, url);
+                    _logger.LogDebug("Received a response for: {Method} {Url}", method, url);
                     _tasks.Add(CaptureJsonResponseAsync<T>(requestType, args));
                 }
             };

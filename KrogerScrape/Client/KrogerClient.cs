@@ -219,8 +219,8 @@ function () {
 
             await page.SetViewportAsync(new ViewPortOptions
             {
-                Width = 1920,
-                Height = 1080,
+                Width = 1024,
+                Height = 768,
             });
 
             await page.SetRequestInterceptionAsync(true);
