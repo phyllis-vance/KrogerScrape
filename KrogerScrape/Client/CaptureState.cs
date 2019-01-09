@@ -5,7 +5,9 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using KrogerScrape.Support;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using PuppeteerSharp;
 
 namespace KrogerScrape.Client
@@ -26,26 +28,32 @@ namespace KrogerScrape.Client
         private readonly OperationType _operationType;
         private readonly object _operationParameters;
         private readonly AsyncBlockingQueue<Response> _queue;
+        private readonly ILogger _logger;
 
-        public CaptureState(OperationType operationType, object operationParameters, AsyncBlockingQueue<Response> queue)
+        public CaptureState(
+            OperationType operationType,
+            object operationParameters,
+            AsyncBlockingQueue<Response> queue,
+            ILogger logger)
         {
             _operationType = operationType;
             _operationParameters = operationParameters;
             _queue = queue;
+            _logger = logger;
         }
 
-        public List<T> GetValues<T>()
+        public List<DeserializedResponse<T>> GetValues<T>()
         {
-            var type = typeof(T);
+            var type = typeof(DeserializedResponse<T>);
             lock (_valuesLock)
             {
                 if (_values.TryGetValue(type, out var values))
                 {
-                    return values.Cast<T>().ToList();
+                    return values.Cast<DeserializedResponse<T>>().ToList();
                 }
                 else
                 {
-                    return new List<T>();
+                    return new List<DeserializedResponse<T>>();
                 }
             }
         }
@@ -86,9 +94,9 @@ namespace KrogerScrape.Client
                 "https://www.kroger.com/auth/api/sign-in");
         }
 
-        private void Capture<T>(Page page, RequestType requestType, HttpMethod method, string url)
+        private void InitializeDeserializedResponseList<T>()
         {
-            var type = typeof(T);
+            var type = typeof(DeserializedResponse<T>);
             lock (_valuesLock)
             {
                 if (!_values.ContainsKey(type))
@@ -96,12 +104,31 @@ namespace KrogerScrape.Client
                     _values[type] = new List<object>();
                 }
             }
+        }
+
+        private void AddDeserializedResponse<T>(string requestId, T value)
+        {
+            lock (_values)
+            {
+                _values[typeof(DeserializedResponse<T>)].Add(new DeserializedResponse<T>
+                {
+                    RequestId = requestId,
+                    Response = value,
+                });
+            }
+        }
+
+        private void Capture<T>(Page page, RequestType requestType, HttpMethod method, string url)
+        {
+            InitializeDeserializedResponseList<T>();
+            InitializeDeserializedResponseList<ErrorResponse>();
 
             EventHandler<ResponseCreatedEventArgs> eventHandler = (sender, args) =>
             {
                 if (args.Response.Request.Method == method
                     && args.Response.Request.Url == url)
                 {
+                    _logger.LogDebug("Received a response for {Method} {Url}", method, url);
                     _tasks.Add(CaptureJsonResponseAsync<T>(requestType, args));
                 }
             };
@@ -130,6 +157,7 @@ namespace KrogerScrape.Client
             var body = await args.Response.TextAsync();
 
             _queue.Enqueue(new Response(
+                args.Response.Request.RequestId,
                 _operationType,
                 _operationParameters,
                 requestType,
@@ -138,11 +166,31 @@ namespace KrogerScrape.Client
                 args.Response.Request.Url,
                 body));
 
-            var value = JsonConvert.DeserializeObject<T>(body, JsonSerializerSettings);
-
-            lock (_values)
+            try
             {
-                _values[typeof(T)].Add(value);
+                AddDeserializedResponse(
+                    args.Response.Request.RequestId,
+                    JsonConvert.DeserializeObject<T>(body, JsonSerializerSettings));
+            }
+            catch (JsonSerializationException)
+            {
+                try
+                {
+                    AddDeserializedResponse(
+                        args.Response.Request.RequestId,
+                        JsonConvert.DeserializeObject<ErrorResponse>(body, JsonSerializerSettings));
+
+                    var prettyJson = JObject.Parse(body).ToString(Formatting.Indented);
+                    _logger.LogError(
+                        $"An error was returned by Kroger.com:{Environment.NewLine}{{ErrorJson}}",
+                        prettyJson);
+                }
+                catch
+                {
+                    // Ignore these failures.
+                }
+
+                throw;
             }
         }
     }

@@ -10,7 +10,6 @@ namespace KrogerScrape.Entities
         }
 
         public long ReceiptEntityId { get; set; }
-
-        public ReceiptIdEntity ReceiptEntity { get; set; }
+        public ReceiptEntity ReceiptEntity { get; set; }
     }
 }

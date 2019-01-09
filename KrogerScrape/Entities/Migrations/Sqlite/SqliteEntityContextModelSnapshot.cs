@@ -39,29 +39,38 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                     b.HasDiscriminator<int>("Type").HasValue(1);
                 });
 
-            modelBuilder.Entity("KrogerScrape.Entities.ReceiptIdEntity", b =>
+            modelBuilder.Entity("KrogerScrape.Entities.ReceiptEntity", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd();
 
-                    b.Property<string>("DivisionNumber");
+                    b.Property<string>("DivisionNumber")
+                        .IsRequired();
 
-                    b.Property<string>("StoreNumber");
+                    b.Property<long?>("ReceiptResponseEntityId");
 
-                    b.Property<string>("TerminalNumber");
+                    b.Property<string>("StoreNumber")
+                        .IsRequired();
 
-                    b.Property<string>("TransactionDate");
+                    b.Property<string>("TerminalNumber")
+                        .IsRequired();
 
-                    b.Property<string>("TransactionId");
+                    b.Property<string>("TransactionDate")
+                        .IsRequired();
+
+                    b.Property<string>("TransactionId")
+                        .IsRequired();
 
                     b.Property<long>("UserEntityId");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ReceiptResponseEntityId");
+
                     b.HasIndex("UserEntityId", "DivisionNumber", "StoreNumber", "TransactionDate", "TerminalNumber", "TransactionId")
                         .IsUnique();
 
-                    b.ToTable("ReceiptIds");
+                    b.ToTable("Receipts");
                 });
 
             modelBuilder.Entity("KrogerScrape.Entities.ResponseEntity", b =>
@@ -69,23 +78,32 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd();
 
-                    b.Property<byte[]>("Body");
+                    b.Property<byte[]>("Body")
+                        .IsRequired();
 
                     b.Property<DateTimeOffset>("CompletedTimestamp");
 
                     b.Property<int>("CompressionType");
 
-                    b.Property<string>("Method");
+                    b.Property<string>("Method")
+                        .IsRequired();
 
                     b.Property<long>("OperationEntityId");
 
+                    b.Property<string>("RequestId")
+                        .IsRequired();
+
                     b.Property<int>("RequestType");
 
-                    b.Property<string>("Url");
+                    b.Property<string>("Url")
+                        .IsRequired();
 
                     b.HasKey("Id");
 
                     b.HasIndex("OperationEntityId");
+
+                    b.HasIndex("RequestId")
+                        .IsUnique();
 
                     b.ToTable("Responses");
                 });
@@ -95,7 +113,8 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd();
 
-                    b.Property<string>("Email");
+                    b.Property<string>("Email")
+                        .IsRequired();
 
                     b.HasKey("Id");
 
@@ -148,10 +167,14 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                         .HasForeignKey("ParentId");
                 });
 
-            modelBuilder.Entity("KrogerScrape.Entities.ReceiptIdEntity", b =>
+            modelBuilder.Entity("KrogerScrape.Entities.ReceiptEntity", b =>
                 {
+                    b.HasOne("KrogerScrape.Entities.ResponseEntity", "ReceiptResponseEntity")
+                        .WithMany()
+                        .HasForeignKey("ReceiptResponseEntityId");
+
                     b.HasOne("KrogerScrape.Entities.UserEntity", "UserEntity")
-                        .WithMany("ReceiptIdEntities")
+                        .WithMany("ReceiptEntities")
                         .HasForeignKey("UserEntityId")
                         .OnDelete(DeleteBehavior.Cascade);
                 });
@@ -174,7 +197,7 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
 
             modelBuilder.Entity("KrogerScrape.Entities.GetReceiptEntity", b =>
                 {
-                    b.HasOne("KrogerScrape.Entities.ReceiptIdEntity", "ReceiptEntity")
+                    b.HasOne("KrogerScrape.Entities.ReceiptEntity", "ReceiptEntity")
                         .WithMany("GetReceiptOperationEntities")
                         .HasForeignKey("ReceiptEntityId")
                         .OnDelete(DeleteBehavior.Cascade);

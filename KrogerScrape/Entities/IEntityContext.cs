@@ -11,7 +11,7 @@ namespace KrogerScrape.Entities
         DbSet<GetReceiptEntity> GetReceipts { get; }
         DbSet<GetReceiptSummariesEntity> GetReceiptSummaries { get; }
         DbSet<OperationEntity> Operations { get; }
-        DbSet<ReceiptIdEntity> ReceiptIds { get; }
+        DbSet<ReceiptEntity> Receipts { get; }
         DbSet<ResponseEntity> Responses { get; }
         DbSet<SignInEntity> SignIns { get; }
         DbSet<UserEntity> Users { get; }

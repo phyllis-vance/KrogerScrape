@@ -80,7 +80,7 @@ namespace KrogerScrape.Logic
                         return false;
                     }
 
-                    if (signInResponse.AuthenticationState?.Authenticated != true)
+                    if (signInResponse.Response.AuthenticationState?.Authenticated != true)
                     {
                         _logger.LogError("The sign in was not successful. Verify your email and password.");
                         return false;
@@ -98,8 +98,11 @@ namespace KrogerScrape.Logic
                         return false;
                     }
 
-                    _logger.LogInformation("Found {Count} receipts. Processing them from oldest to newest.", receiptSummaries.Count);
+                    _logger.LogInformation(
+                        "Found {Count} receipts. Processing them from oldest to newest.",
+                        receiptSummaries.Response.Count);
                     var ascendingChronological = receiptSummaries
+                        .Response
                         .OrderBy(x => DateTimeOffset.ParseExact(x.ReceiptId.TransactionDate, "yyyy-MM-dd", CultureInfo.InvariantCulture))
                         .ToList();
 
@@ -121,7 +124,7 @@ namespace KrogerScrape.Logic
                             continue;
                         }
 
-                        var receiptIdEntity = await _entityRepository.GetOrAddReceiptIdAsync(userEntity.Id, receiptId, token);
+                        var receiptIdEntity = await _entityRepository.GetOrAddReceiptAsync(userEntity.Id, receiptId, token);
                         if (!_settings.RefetchReceipts
                             && receiptIdEntity
                                 .GetReceiptOperationEntities
@@ -157,8 +160,8 @@ namespace KrogerScrape.Logic
 
                         _logger.LogInformation(
                             "Done. The receipt had {ItemCount} items, totaling {Amount}.",
-                            receipt.TotalLineItems,
-                            receipt.Total.Value.ToString("C", CultureInfo.CreateSpecificCulture("en-US")));
+                            receipt.Response.TotalLineItems,
+                            receipt.Response.Total.Value.ToString("C", CultureInfo.CreateSpecificCulture("en-US")));
                     }
                 }
                 catch (Exception)

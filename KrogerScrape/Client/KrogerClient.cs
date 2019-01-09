@@ -349,7 +349,7 @@ function () {
             }
         }
 
-        public async Task<SignInResponse> SignInAsync(CancellationToken token)
+        public async Task<DeserializedResponse<SignInResponse>> SignInAsync(CancellationToken token)
         {
             ThrowIfDisposed();
             if (_signedIn)
@@ -361,7 +361,8 @@ function () {
             using (var captureState = new CaptureState(
                 OperationType.SignIn,
                 null,
-                _queue))
+                _queue,
+                _logger))
             {
                 captureState.CaptureAuthenticationState(page);
                 captureState.CaptureSignIn(page);
@@ -375,7 +376,7 @@ function () {
 
                 token.ThrowIfCancellationRequested();
 
-                await CaptureScreenshotIfDebugAsync(page, nameof(SignInAsync));
+                await CaptureScreenshotIfDebugAsync(page, $"{nameof(SignInAsync)}-Before");
 
                 await page.TypeAsync("#SignIn-emailInput", _settings.Email);
                 await page.TypeAsync("#SignIn-passwordInput", _settings.Password);
@@ -387,6 +388,8 @@ function () {
                         WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
                     });
 
+                await CaptureScreenshotIfDebugAsync(page, $"{nameof(SignInAsync)}-After");
+
                 token.ThrowIfCancellationRequested();
 
                 await captureState.WaitForCompletionAsync();
@@ -395,7 +398,7 @@ function () {
                     .GetValues<SignInResponse>()
                     .LastOrDefault();
 
-                _signedIn = response?.AuthenticationState?.Authenticated == true;
+                _signedIn = response?.Response.AuthenticationState?.Authenticated == true;
 
                 return response;
             }
@@ -436,7 +439,7 @@ function () {
             }
         }
 
-        public async Task<List<Receipt>> GetReceiptSummariesAsync(CancellationToken token)
+        public async Task<DeserializedResponse<List<Receipt>>> GetReceiptSummariesAsync(CancellationToken token)
         {
             ThrowIfDisposed();
             ThrowIfNotSignedIn();
@@ -445,7 +448,8 @@ function () {
             using (var captureState = new CaptureState(
                 OperationType.GetReceiptSummaries,
                 null,
-                _queue))
+                _queue,
+                _logger))
             {
                 captureState.CaptureAuthenticationState(page);
                 captureState.CaptureReceiptSummaryByUserId(page);
@@ -487,7 +491,7 @@ function () {
             };
         }
 
-        public async Task<Receipt> GetReceiptAsync(ReceiptId receiptId, CancellationToken token)
+        public async Task<DeserializedResponse<Receipt>> GetReceiptAsync(ReceiptId receiptId, CancellationToken token)
         {
             ThrowIfDisposed();
             ThrowIfNotSignedIn();
@@ -498,7 +502,8 @@ function () {
             using (var captureState = new CaptureState(
                 OperationType.GetReceipt,
                 receiptId,
-                _queue))
+                _queue,
+                _logger))
             {
                 captureState.CaptureAuthenticationState(page);
                 captureState.CaptureReceiptDetail(page);

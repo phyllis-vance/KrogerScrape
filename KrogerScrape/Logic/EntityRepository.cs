@@ -15,7 +15,8 @@ namespace KrogerScrape.Logic
     {
         private readonly EntityContextFactory _entityContextFactory;
 
-        public EntityRepository(EntityContextFactory entityContextFactory)
+        public EntityRepository(
+            EntityContextFactory entityContextFactory)
         {
             _entityContextFactory = entityContextFactory;
         }
@@ -26,11 +27,17 @@ namespace KrogerScrape.Logic
         {
             using (var entityContext = _entityContextFactory.Create())
             {
-                var entity = await entityContext
+                var entities = await entityContext
                    .Users
-                   .Where(x => x.Email == email)
-                   .FirstOrDefaultAsync(token);
+                   .Where(x => x.Email.ToLower() == email.ToLower())
+                   .ToListAsync(token);
 
+                if (entities.Count > 1)
+                {
+                    throw new InvalidOperationException("There duplicate users with this email address.");
+                }
+
+                var entity = entities.FirstOrDefault();
                 if (entity == null)
                 {
                     entity = new UserEntity { Email = email };
@@ -43,7 +50,58 @@ namespace KrogerScrape.Logic
             }
         }
 
-        public async Task<ReceiptIdEntity> GetOrAddReceiptIdAsync(
+        public async Task<List<ResponseEntity>> GetResponsesAsync(
+            string email,
+            string divisionNumber,
+            string storeNumber,
+            string transactionDate,
+            string terminalNumber,
+            string transactionId,
+            CancellationToken token)
+        {
+            using (var entityContext = _entityContextFactory.Create())
+            {
+                IQueryable<ReceiptEntity> query = entityContext
+                    .Receipts
+                    .Include(x => x.ReceiptResponseEntity);
+
+                if (email != null)
+                {
+                    query = query.Where(x => x.UserEntity.Email == email);
+                }
+
+                if (divisionNumber != null)
+                {
+                    query = query.Where(x => x.DivisionNumber == divisionNumber);
+                }
+
+                if (storeNumber != null)
+                {
+                    query = query.Where(x => x.StoreNumber == storeNumber);
+                }
+
+                if (transactionDate != null)
+                {
+                    query = query.Where(x => x.TransactionDate == transactionDate);
+                }
+
+                if (terminalNumber != null)
+                {
+                    query = query.Where(x => x.TerminalNumber == terminalNumber);
+                }
+
+                if (transactionId != null)
+                {
+                    query = query.Where(x => x.TransactionId == transactionId);
+                }
+
+                return await query
+                    .Select(x => x.ReceiptResponseEntity)
+                    .ToListAsync();
+            }
+        }
+
+        public async Task<ReceiptEntity> GetOrAddReceiptAsync(
             long userEntityId,
             ReceiptId receiptId,
             CancellationToken token)
@@ -51,7 +109,7 @@ namespace KrogerScrape.Logic
             using (var entityContext = _entityContextFactory.Create())
             {
                 var entity = await entityContext
-                    .ReceiptIds
+                    .Receipts
                     .Include(x => x.GetReceiptOperationEntities)
                     .ThenInclude(x => x.ResponseEntities)
                     .Where(x => x.DivisionNumber == receiptId.DivisionNumber
@@ -63,7 +121,7 @@ namespace KrogerScrape.Logic
 
                 if (entity == null)
                 {
-                    entity = new ReceiptIdEntity
+                    entity = new ReceiptEntity
                     {
                         UserEntityId = userEntityId,
                         DivisionNumber = receiptId.DivisionNumber,
@@ -74,7 +132,7 @@ namespace KrogerScrape.Logic
                         GetReceiptOperationEntities = new List<GetReceiptEntity>(),
                     };
 
-                    await entityContext.ReceiptIds.AddAsync(entity, token);
+                    await entityContext.Receipts.AddAsync(entity, token);
                     await entityContext.SaveChangesAsync(token);
                 }
 
@@ -97,6 +155,7 @@ namespace KrogerScrape.Logic
                 var entity = new ResponseEntity
                 {
                     OperationEntityId = operationEntityId,
+                    RequestId = response.RequestId,
                     RequestType = response.RequestType,
                     CompletedTimestamp = response.CompletedTimestamp,
                     Method = response.Method.Method,

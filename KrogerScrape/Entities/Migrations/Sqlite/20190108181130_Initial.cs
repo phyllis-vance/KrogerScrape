@@ -13,7 +13,7 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                 {
                     Id = table.Column<long>(nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    Email = table.Column<string>(nullable: true)
+                    Email = table.Column<string>(nullable: false)
                 },
                 constraints: table =>
                 {
@@ -21,23 +21,50 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                 });
 
             migrationBuilder.CreateTable(
-                name: "ReceiptIds",
+                name: "Responses",
+                columns: table => new
+                {
+                    Id = table.Column<long>(nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    OperationEntityId = table.Column<long>(nullable: false),
+                    RequestId = table.Column<string>(nullable: false),
+                    RequestType = table.Column<int>(nullable: false),
+                    CompletedTimestamp = table.Column<DateTimeOffset>(nullable: false),
+                    Method = table.Column<string>(nullable: false),
+                    Url = table.Column<string>(nullable: false),
+                    CompressionType = table.Column<int>(nullable: false),
+                    Body = table.Column<byte[]>(nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Responses", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Receipts",
                 columns: table => new
                 {
                     Id = table.Column<long>(nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
                     UserEntityId = table.Column<long>(nullable: false),
-                    DivisionNumber = table.Column<string>(nullable: true),
-                    StoreNumber = table.Column<string>(nullable: true),
-                    TransactionDate = table.Column<string>(nullable: true),
-                    TerminalNumber = table.Column<string>(nullable: true),
-                    TransactionId = table.Column<string>(nullable: true)
+                    DivisionNumber = table.Column<string>(nullable: false),
+                    StoreNumber = table.Column<string>(nullable: false),
+                    TransactionDate = table.Column<string>(nullable: false),
+                    TerminalNumber = table.Column<string>(nullable: false),
+                    TransactionId = table.Column<string>(nullable: false),
+                    ReceiptResponseEntityId = table.Column<long>(nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_ReceiptIds", x => x.Id);
+                    table.PrimaryKey("PK_Receipts", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_ReceiptIds_Users_UserEntityId",
+                        name: "FK_Receipts_Responses_ReceiptResponseEntityId",
+                        column: x => x.ReceiptResponseEntityId,
+                        principalTable: "Responses",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Receipts_Users_UserEntityId",
                         column: x => x.UserEntityId,
                         principalTable: "Users",
                         principalColumn: "Id",
@@ -67,9 +94,9 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_Operations_ReceiptIds_ReceiptEntityId",
+                        name: "FK_Operations_Receipts_ReceiptEntityId",
                         column: x => x.ReceiptEntityId,
-                        principalTable: "ReceiptIds",
+                        principalTable: "Receipts",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
@@ -78,31 +105,6 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                         principalTable: "Operations",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "Responses",
-                columns: table => new
-                {
-                    Id = table.Column<long>(nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    OperationEntityId = table.Column<long>(nullable: false),
-                    RequestType = table.Column<int>(nullable: false),
-                    CompletedTimestamp = table.Column<DateTimeOffset>(nullable: false),
-                    Method = table.Column<string>(nullable: true),
-                    Url = table.Column<string>(nullable: true),
-                    CompressionType = table.Column<int>(nullable: false),
-                    Body = table.Column<byte[]>(nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Responses", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Responses_Operations_OperationEntityId",
-                        column: x => x.OperationEntityId,
-                        principalTable: "Operations",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateIndex(
@@ -121,8 +123,13 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                 column: "ParentId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ReceiptIds_UserEntityId_DivisionNumber_StoreNumber_TransactionDate_TerminalNumber_TransactionId",
-                table: "ReceiptIds",
+                name: "IX_Receipts_ReceiptResponseEntityId",
+                table: "Receipts",
+                column: "ReceiptResponseEntityId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Receipts_UserEntityId_DivisionNumber_StoreNumber_TransactionDate_TerminalNumber_TransactionId",
+                table: "Receipts",
                 columns: new[] { "UserEntityId", "DivisionNumber", "StoreNumber", "TransactionDate", "TerminalNumber", "TransactionId" },
                 unique: true);
 
@@ -132,25 +139,51 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                 column: "OperationEntityId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Responses_RequestId",
+                table: "Responses",
+                column: "RequestId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Users_Email",
                 table: "Users",
                 column: "Email",
                 unique: true);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_Responses_Operations_OperationEntityId",
+                table: "Responses",
+                column: "OperationEntityId",
+                principalTable: "Operations",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Cascade);
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropForeignKey(
+                name: "FK_Operations_Users_UserEntityId",
+                table: "Operations");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_Receipts_Users_UserEntityId",
+                table: "Receipts");
+
+            migrationBuilder.DropForeignKey(
+                name: "FK_Operations_Receipts_ReceiptEntityId",
+                table: "Operations");
+
+            migrationBuilder.DropTable(
+                name: "Users");
+
+            migrationBuilder.DropTable(
+                name: "Receipts");
+
             migrationBuilder.DropTable(
                 name: "Responses");
 
             migrationBuilder.DropTable(
                 name: "Operations");
-
-            migrationBuilder.DropTable(
-                name: "ReceiptIds");
-
-            migrationBuilder.DropTable(
-                name: "Users");
         }
     }
 }

@@ -24,7 +24,7 @@ namespace KrogerScrape.Entities
         public DbSet<SignInEntity> SignIns { get; set; }
         public DbSet<GetReceiptSummariesEntity> GetReceiptSummaries { get; set; }
         public DbSet<GetReceiptEntity> GetReceipts { get; set; }
-        public DbSet<ReceiptIdEntity> ReceiptIds { get; set; }
+        public DbSet<ReceiptEntity> Receipts { get; set; }
         public DbSet<ResponseEntity> Responses { get; set; }
 
         public async Task MigrateAsync(CancellationToken token)
@@ -56,8 +56,13 @@ namespace KrogerScrape.Entities
                 .IsUnique();
 
             modelBuilder
-                .Entity<ReceiptIdEntity>()
+                .Entity<ReceiptEntity>()
                 .HasIndex(x => new { x.UserEntityId, x.DivisionNumber, x.StoreNumber, x.TransactionDate, x.TerminalNumber, x.TransactionId })
+                .IsUnique();
+
+            modelBuilder
+                .Entity<ResponseEntity>()
+                .HasIndex(x => x.RequestId)
                 .IsUnique();
 
             modelBuilder

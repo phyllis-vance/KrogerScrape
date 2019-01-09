@@ -6,6 +6,7 @@ namespace KrogerScrape.Client
     public class Response
     {
         public Response(
+            string requestId,
             OperationType operationType,
             object operationParameters,
             RequestType requestType,
@@ -14,6 +15,7 @@ namespace KrogerScrape.Client
             string url,
             string body)
         {
+            RequestId = requestId;
             OperationType = operationType;
             OperationParameters = operationParameters;
             RequestType = requestType;
@@ -23,6 +25,7 @@ namespace KrogerScrape.Client
             Body = body;
         }
 
+        public string RequestId { get; }
         public OperationType OperationType { get; }
         public object OperationParameters { get; }
         public RequestType RequestType { get; }
