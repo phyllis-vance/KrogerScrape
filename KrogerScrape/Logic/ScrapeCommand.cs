@@ -129,11 +129,9 @@ namespace KrogerScrape.Logic
                         continue;
                     }
 
-                    var receiptIdEntity = await _entityRepository.GetOrAddReceiptAsync(userEntity.Id, receiptId, token);
-                    if (!_settings.RefetchReceipts
-                        && receiptIdEntity
-                            .GetReceiptOperationEntities
-                            .Any(gr => gr.ResponseEntities.Any(r => r.RequestType == RequestType.ReceiptDetail)))
+                    var receiptEntity = await _entityRepository.GetOrAddReceiptAsync(userEntity.Id, receiptId, token);
+                    receiptEntity = await _entityRepository.TrySetLatestReceiptResponseAsync(receiptEntity.Id, token);
+                    if (receiptEntity.ReceiptResponseEntity != null)
                     {
                         _logger.LogDebug(
                             "A receipt on {ReceiptTransactionDate} has already been fetched in the past and will therefore be skipped.",
@@ -153,7 +151,7 @@ namespace KrogerScrape.Logic
                         receiptUrl,
                         receiptId.TransactionDate);
 
-                    var getReceipt = await _entityRepository.StartGetReceiptAsync(commandEntity.Id, receiptIdEntity.Id, token);
+                    var getReceipt = await _entityRepository.StartGetReceiptAsync(commandEntity.Id, receiptEntity.Id, token);
                     getReceipts[receiptId] = getReceipt;
                     var receipt = await krogerClient.GetReceiptAsync(receiptId, token);
                     await _entityRepository.CompleteOperationAsync(getReceipt, token);
@@ -163,6 +161,11 @@ namespace KrogerScrape.Logic
                         _logger.LogError("No receipt data was found for {{ReceiptUrl}}.", receiptUrl);
                         return false;
                     }
+
+                    await _entityRepository.TrySetLatestReceiptResponseAsync(
+                        receiptEntity.Id,
+                        receipt.RequestId,
+                        token);
 
                     _logger.LogInformation(
                         "Done. The receipt had {ItemCount} items, totaling {Amount}.",

@@ -44,6 +44,7 @@ namespace KrogerScrape.Client
             "www.kroger.com/product/images/",
         };
 
+        private readonly Deserializer _deserializer;
         private readonly IKrogerClientSettings _settings;
         private readonly ILogger<KrogerClient> _logger;
         private readonly ConcurrentQueue<Func<Response, Task>> _listeners;
@@ -53,9 +54,11 @@ namespace KrogerScrape.Client
         private bool _signedIn;
 
         public KrogerClient(
+            Deserializer deserializer,
             IKrogerClientSettings settings,
             ILogger<KrogerClient> logger)
         {
+            _deserializer = deserializer;
             _settings = settings;
             _logger = logger;
             _listeners = new ConcurrentQueue<Func<Response, Task>>();
@@ -328,6 +331,7 @@ function () {
 
             using (var page = await GetPageAsync())
             using (var captureState = new CaptureState(
+                _deserializer,
                 OperationType.SignIn,
                 null,
                 _listeners.ToList(),
@@ -415,6 +419,7 @@ function () {
 
             using (var page = await GetPageAsync())
             using (var captureState = new CaptureState(
+                _deserializer,
                 OperationType.GetReceiptSummaries,
                 null,
                 _listeners.ToList(),
@@ -469,6 +474,7 @@ function () {
 
             using (var page = await GetPageAsync())
             using (var captureState = new CaptureState(
+                _deserializer,
                 OperationType.GetReceipt,
                 receiptId,
                 _listeners.ToList(),

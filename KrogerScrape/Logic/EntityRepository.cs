@@ -8,17 +8,21 @@ using KrogerScrape.Client;
 using KrogerScrape.Entities;
 using KrogerScrape.Support;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 
 namespace KrogerScrape.Logic
 {
     public class EntityRepository
     {
         private readonly EntityContextFactory _entityContextFactory;
+        private readonly Deserializer _deserializer;
 
         public EntityRepository(
-            EntityContextFactory entityContextFactory)
+            EntityContextFactory entityContextFactory,
+            Deserializer deserializer)
         {
             _entityContextFactory = entityContextFactory;
+            _deserializer = deserializer;
         }
 
         public async Task<UserEntity> GetOrAddUserAsync(
@@ -110,8 +114,7 @@ namespace KrogerScrape.Logic
             {
                 var entity = await entityContext
                     .Receipts
-                    .Include(x => x.GetReceiptOperationEntities)
-                    .ThenInclude(x => x.ResponseEntities)
+                    .Include(x => x.ReceiptResponseEntity)
                     .Where(x => x.DivisionNumber == receiptId.DivisionNumber
                              && x.StoreNumber == receiptId.StoreNumber
                              && x.TransactionDate == receiptId.TransactionDate
@@ -140,6 +143,116 @@ namespace KrogerScrape.Logic
             }
         }
 
+        public async Task<ReceiptEntity> TrySetLatestReceiptResponseAsync(
+            long receiptId,
+            CancellationToken token)
+        {
+            using (var entityContext = _entityContextFactory.Create())
+            {
+                var receipt = await entityContext
+                    .Receipts
+                    .Include(x => x.ReceiptResponseEntity)
+                    .Include(x => x.GetReceiptOperationEntities)
+                    .ThenInclude(x => x.ResponseEntities)
+                    .Where(x => x.Id == receiptId)
+                    .SingleAsync();
+
+                var responses = receipt
+                    .GetReceiptOperationEntities
+                    .SelectMany(x => x.ResponseEntities)
+                    .OrderByDescending(x => x.CompletedTimestamp)
+                    .ToList();
+
+                if (!responses.Any())
+                {
+                    if (receipt.ReceiptResponseEntity != null)
+                    {
+                        receipt.ReceiptResponseEntity = null;
+                        await entityContext.SaveChangesAsync(token);
+                    }
+
+                    return receipt;
+                }
+
+                foreach (var response in responses)
+                {
+                    try
+                    {
+                        var json = Deserialize(response);
+                        _deserializer.Receipt(json);
+                    }
+                    catch (JsonException)
+                    {
+                        // This response can't be treated like a response. Let's move on.
+                        continue;
+                    }
+
+                    receipt.ReceiptResponseEntity = response;
+                    await entityContext.SaveChangesAsync(token);
+                    break;
+                }
+
+                return receipt;
+            }
+        }
+
+        private string Deserialize(ResponseEntity response)
+        {
+            byte[] decompressed;
+            switch (response.CompressionType)
+            {
+                case CompressionType.Gzip:
+                    decompressed = CompressionUtility.Decompress(response.Bytes);
+                    break;
+                case CompressionType.None:
+                    decompressed = response.Bytes;
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+
+            return Encoding.UTF8.GetString(decompressed);
+        }
+
+        private SerializedBytes Serialize(string body)
+        {
+            var uncompressedBytes = Encoding.UTF8.GetBytes(body);
+            var compressedBytes = CompressionUtility.Compress(uncompressedBytes);
+            var isCompressed = compressedBytes.Length < uncompressedBytes.Length;
+            var bytes = isCompressed ? compressedBytes : uncompressedBytes;
+            var compressionType = isCompressed ? CompressionType.Gzip : CompressionType.None;
+
+            return new SerializedBytes(compressionType, bytes);
+        }
+
+        public async Task TrySetLatestReceiptResponseAsync(
+            long receiptId,
+            string requestId,
+            CancellationToken token)
+        {
+            using (var entityContext = _entityContextFactory.Create())
+            {
+                var receipt = await entityContext
+                    .Receipts
+                    .Include(x => x.ReceiptResponseEntity)
+                    .Where(x => x.Id == receiptId)
+                    .SingleAsync();
+
+                var response = await entityContext
+                    .Responses
+                    .Where(x => x.RequestId == requestId)
+                    .Where(x => x.RequestType == RequestType.ReceiptDetail)
+                    .SingleAsync();
+
+                if (receipt.ReceiptResponseEntity == null
+                    || receipt.ReceiptResponseEntity.CompletedTimestamp < response.CompletedTimestamp)
+                {
+                    receipt.ReceiptResponseEntity = response;
+                    await entityContext.SaveChangesAsync(token);
+                }
+            }
+        }
+
         public async Task RecordResponseAsync(
             long operationEntityId,
             Response response,
@@ -147,10 +260,7 @@ namespace KrogerScrape.Logic
         {
             using (var entityContext = _entityContextFactory.Create())
             {
-                var uncompressedBytes = Encoding.UTF8.GetBytes(response.Body);
-                var compressedBytes = CompressionUtility.Compress(uncompressedBytes);
-                var isCompressed = compressedBytes.Length < uncompressedBytes.Length;
-                var bytes = isCompressed ? compressedBytes : uncompressedBytes;
+                var serializedBytes = Serialize(response.Body);
 
                 var entity = new ResponseEntity
                 {
@@ -160,8 +270,8 @@ namespace KrogerScrape.Logic
                     CompletedTimestamp = response.CompletedTimestamp,
                     Method = response.Method.Method,
                     Url = response.Url,
-                    CompressionType = isCompressed ? CompressionType.Gzip : CompressionType.None,
-                    Body = bytes,
+                    CompressionType = serializedBytes.CompressionType,
+                    Bytes = serializedBytes.Bytes,
                 };
 
                 await entityContext.Responses.AddAsync(entity, token);
@@ -257,6 +367,18 @@ namespace KrogerScrape.Logic
                 operationEntity.CompletedTimestamp = DateTimeOffset.UtcNow;
                 await entityContext.SaveChangesAsync(token);
             }
+        }
+
+        private class SerializedBytes
+        {
+            public SerializedBytes(CompressionType compressionType, byte[] bytes)
+            {
+                CompressionType = compressionType;
+                Bytes = bytes;
+            }
+
+            public CompressionType CompressionType { get; }
+            public byte[] Bytes { get; }
         }
     }
 }

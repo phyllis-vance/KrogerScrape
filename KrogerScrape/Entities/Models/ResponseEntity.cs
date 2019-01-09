@@ -18,7 +18,7 @@ namespace KrogerScrape.Entities
         public string Url { get; set; }
         public CompressionType CompressionType { get; set; }
         [Required]
-        public byte[] Body { get; set; }
+        public byte[] Bytes { get; set; }
 
         public OperationEntity OperationEntity { get; set; }
     }

@@ -14,17 +14,11 @@ namespace KrogerScrape.Client
 {
     public class CaptureState : IDisposable
     {
-        private static readonly JsonSerializerSettings JsonSerializerSettings = new JsonSerializerSettings
-        {
-            DateTimeZoneHandling = DateTimeZoneHandling.Unspecified,
-            DateParseHandling = DateParseHandling.DateTime,
-            MissingMemberHandling = MissingMemberHandling.Error,
-        };
-
         private readonly ConcurrentBag<Task> _tasks = new ConcurrentBag<Task>();
         private readonly ConcurrentBag<Action> _detachActions = new ConcurrentBag<Action>();
         private readonly object _valuesLock = new object();
         private readonly Dictionary<Type, List<object>> _values = new Dictionary<Type, List<object>>();
+        private readonly Deserializer _deserializer;
         private readonly OperationType _operationType;
         private readonly object _operationParameters;
         private readonly AsyncBlockingQueue<Response> _queue;
@@ -33,11 +27,13 @@ namespace KrogerScrape.Client
         private readonly ILogger _logger;
 
         public CaptureState(
+            Deserializer deserializer,
             OperationType operationType,
             object operationParameters,
             IReadOnlyList<Func<Response, Task>> listeners,
             ILogger logger)
         {
+            _deserializer = deserializer;
             _operationType = operationType;
             _operationParameters = operationParameters;
             _queue = new AsyncBlockingQueue<Response>();
@@ -89,7 +85,8 @@ namespace KrogerScrape.Client
                 page,
                 RequestType.AuthenticationState,
                 HttpMethod.Get,
-                "https://www.kroger.com/auth/api/authentication-state");
+                "https://www.kroger.com/auth/api/authentication-state",
+                x => _deserializer.AuthenticationState(x));
         }
 
         public void CaptureReceiptSummaryByUserId(Page page)
@@ -98,7 +95,8 @@ namespace KrogerScrape.Client
                 page,
                 RequestType.ReceiptSummaryByUserId,
                 HttpMethod.Get,
-                "https://www.kroger.com/mypurchases/api/v1/receipt/summary/by-user-id");
+                "https://www.kroger.com/mypurchases/api/v1/receipt/summary/by-user-id",
+                x => _deserializer.ReceiptSummaries(x));
         }
 
         public void CaptureReceiptDetail(Page page)
@@ -107,7 +105,8 @@ namespace KrogerScrape.Client
                 page,
                 RequestType.ReceiptDetail,
                 HttpMethod.Post,
-                "https://www.kroger.com/mypurchases/api/v1/receipt/detail");
+                "https://www.kroger.com/mypurchases/api/v1/receipt/detail",
+                x => _deserializer.Receipt(x));
         }
 
         public void CaptureSignIn(Page page)
@@ -116,7 +115,8 @@ namespace KrogerScrape.Client
                 page,
                 RequestType.SignIn,
                 HttpMethod.Post,
-                "https://www.kroger.com/auth/api/sign-in");
+                "https://www.kroger.com/auth/api/sign-in",
+                x => _deserializer.SignInResponse(x));
         }
 
         private void InitializeDeserializedResponseList<T>()
@@ -143,7 +143,12 @@ namespace KrogerScrape.Client
             }
         }
 
-        private void Capture<T>(Page page, RequestType requestType, HttpMethod method, string url)
+        private void Capture<T>(
+            Page page,
+            RequestType requestType,
+            HttpMethod method,
+            string url,
+            Func<string, T> deserialize)
         {
             InitializeDeserializedResponseList<T>();
             InitializeDeserializedResponseList<ErrorResponse>();
@@ -154,7 +159,7 @@ namespace KrogerScrape.Client
                     && args.Response.Request.Url == url)
                 {
                     _logger.LogDebug("Received a response for: {Method} {Url}", method, url);
-                    _tasks.Add(CaptureJsonResponseAsync<T>(requestType, args));
+                    _tasks.Add(CaptureJsonResponseAsync<T>(requestType, args, deserialize));
                 }
             };
 
@@ -183,7 +188,10 @@ namespace KrogerScrape.Client
             }
         }
 
-        private async Task CaptureJsonResponseAsync<T>(RequestType requestType, ResponseCreatedEventArgs args)
+        private async Task CaptureJsonResponseAsync<T>(
+            RequestType requestType,
+            ResponseCreatedEventArgs args,
+            Func<string, T> deserialize)
         {
             await Task.Yield();
 
@@ -203,15 +211,15 @@ namespace KrogerScrape.Client
             {
                 AddDeserializedResponse(
                     args.Response.Request.RequestId,
-                    JsonConvert.DeserializeObject<T>(body, JsonSerializerSettings));
+                    deserialize(body));
             }
-            catch (JsonSerializationException)
+            catch (JsonException)
             {
                 try
                 {
                     AddDeserializedResponse(
                         args.Response.Request.RequestId,
-                        JsonConvert.DeserializeObject<ErrorResponse>(body, JsonSerializerSettings));
+                        _deserializer.ErrorResponse(body));
 
                     var prettyJson = JObject.Parse(body).ToString(Formatting.Indented);
                     _logger.LogError(

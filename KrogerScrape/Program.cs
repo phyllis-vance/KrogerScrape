@@ -122,6 +122,7 @@ namespace KrogerScrape
                 optionsLifetime: ServiceLifetime.Transient);
             serviceCollection.AddTransient<IEntityContext>(sp => sp.GetRequiredService<SqliteEntityContext>());
 
+            serviceCollection.AddTransient<Deserializer>();
             serviceCollection.AddTransient<EntityRepository>();
             serviceCollection.AddTransient<KrogerClient>();
             serviceCollection.AddTransient(sp => new KrogerClientFactory(() => sp.GetRequiredService<KrogerClient>()));

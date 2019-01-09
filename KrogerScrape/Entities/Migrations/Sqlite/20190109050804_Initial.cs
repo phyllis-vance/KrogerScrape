@@ -33,7 +33,7 @@ namespace KrogerScrape.Entities.Migrations.Sqlite
                     Method = table.Column<string>(nullable: false),
                     Url = table.Column<string>(nullable: false),
                     CompressionType = table.Column<int>(nullable: false),
-                    Body = table.Column<byte[]>(nullable: false)
+                    Bytes = table.Column<byte[]>(nullable: false)
                 },
                 constraints: table =>
                 {
