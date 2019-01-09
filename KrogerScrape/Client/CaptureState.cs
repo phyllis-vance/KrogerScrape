@@ -28,18 +28,43 @@ namespace KrogerScrape.Client
         private readonly OperationType _operationType;
         private readonly object _operationParameters;
         private readonly AsyncBlockingQueue<Response> _queue;
+        private readonly Task _dequeueTask;
+        private readonly IReadOnlyList<Func<Response, Task>> _listeners;
         private readonly ILogger _logger;
 
         public CaptureState(
             OperationType operationType,
             object operationParameters,
-            AsyncBlockingQueue<Response> queue,
+            IReadOnlyList<Func<Response, Task>> listeners,
             ILogger logger)
         {
             _operationType = operationType;
             _operationParameters = operationParameters;
-            _queue = queue;
+            _queue = new AsyncBlockingQueue<Response>();
+            _dequeueTask = DequeueAsync();
+            _listeners = listeners;
             _logger = logger;
+        }
+
+        private async Task DequeueAsync()
+        {
+            await Task.Yield();
+
+            bool hasItem;
+            do
+            {
+                var result = await _queue.TryDequeueAsync();
+                hasItem = result.HasItem;
+
+                if (hasItem)
+                {
+                    foreach (var listener in _listeners)
+                    {
+                        await listener(result.Item);
+                    }
+                }
+            }
+            while (hasItem);
         }
 
         public List<DeserializedResponse<T>> GetValues<T>()
@@ -139,7 +164,15 @@ namespace KrogerScrape.Client
 
         public async Task WaitForCompletionAsync()
         {
-            await Task.WhenAll(_tasks);
+            try
+            {
+                await Task.WhenAll(_tasks);
+            }
+            finally
+            {
+                _queue.MarkAsComplete();
+                await _dequeueTask;
+            }
         }
 
         public void Dispose()

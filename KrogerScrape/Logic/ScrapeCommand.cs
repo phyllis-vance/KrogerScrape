@@ -35,6 +35,9 @@ namespace KrogerScrape.Logic
         {
             using (var krogerClient = _krogerClientFactory.Create())
             {
+                // Initialize the database and the browser.
+                krogerClient.KillOrphanBrowsers();
+
                 var userEntity = await _entityRepository.GetOrAddUserAsync(_settings.Email, token);
                 var commandEntity = await _entityRepository.StartCommandAsync(userEntity.Id, token);
 
@@ -63,122 +66,112 @@ namespace KrogerScrape.Logic
                         await _entityRepository.RecordResponseAsync(operationEntity.Id, response, CancellationToken.None);
                     });
 
-                try
+                await krogerClient.InitializeAsync();
+
+                // Sign in.
+                token.ThrowIfCancellationRequested();
+                _logger.LogInformation("Logging in with email address {Email}.", _settings.Email);
+                signIn = await _entityRepository.StartSignInAsync(commandEntity.Id, token);
+                var signInResponse = await krogerClient.SignInAsync(token);
+                await _entityRepository.CompleteOperationAsync(signIn, token);
+
+                if (signInResponse == null)
                 {
-                    krogerClient.KillOrphanBrowsers();
-                    await krogerClient.InitializeAsync();
+                    _logger.LogError("No sign in data was found.");
+                    return false;
+                }
 
+                if (signInResponse.Response.AuthenticationState?.Authenticated != true)
+                {
+                    _logger.LogError("The sign in was not successful. Verify your email and password.");
+                    return false;
+                }
+
+                // Fetch the receipt summaries.
+                token.ThrowIfCancellationRequested();
+                _logger.LogInformation("Fetching the receipt summaries.");
+                getReceiptSummaries = await _entityRepository.StartGetReceiptSummariesAsync(commandEntity.Id, token);
+                var receiptSummaries = await krogerClient.GetReceiptSummariesAsync(token);
+                await _entityRepository.CompleteOperationAsync(getReceiptSummaries, token);
+
+                if (receiptSummaries == null)
+                {
+                    _logger.LogError("No receipt summary data was found.");
+                    return false;
+                }
+
+                var ascendingChronological = receiptSummaries
+                    .Response
+                    .OrderBy(x => DateTimeOffset.ParseExact(x.ReceiptId.TransactionDate, "yyyy-MM-dd", CultureInfo.InvariantCulture))
+                    .ToList();
+                _logger.LogInformation(
+                    "Found {Count} receipts. Processing them from oldest to newest.",
+                    ascendingChronological.Count);
+
+                // Fetch each receipt.
+                var receiptNumber = 0;
+                var alreadyCompleteCount = 0;
+                foreach (var receiptSummary in ascendingChronological)
+                {
                     token.ThrowIfCancellationRequested();
-                    _logger.LogInformation("Logging in with email address {Email}.", _settings.Email);
-                    signIn = await _entityRepository.StartSignInAsync(commandEntity.Id, token);
-                    var signInResponse = await krogerClient.SignInAsync(token);
-                    await _entityRepository.CompleteOperationAsync(signIn, token);
 
-                    if (signInResponse == null)
+                    receiptNumber++;
+
+                    var receiptId = receiptSummary.ReceiptId;
+                    var receiptDate = receiptId.TransactionDate;
+
+                    if (getReceipts.ContainsKey(receiptId))
                     {
-                        _logger.LogError("No sign in data was found.");
-                        return false;
+                        _logger.LogWarning(
+                            "A receipt on {ReceiptTransactionDate} appeared more than one in the receipt summaries. It will only be fetched once.",
+                            receiptDate);
+                        alreadyCompleteCount++;
+                        continue;
                     }
 
-                    if (signInResponse.Response.AuthenticationState?.Authenticated != true)
+                    var receiptIdEntity = await _entityRepository.GetOrAddReceiptAsync(userEntity.Id, receiptId, token);
+                    if (!_settings.RefetchReceipts
+                        && receiptIdEntity
+                            .GetReceiptOperationEntities
+                            .Any(gr => gr.ResponseEntities.Any(r => r.RequestType == RequestType.ReceiptDetail)))
                     {
-                        _logger.LogError("The sign in was not successful. Verify your email and password.");
-                        return false;
+                        _logger.LogDebug(
+                            "A receipt on {ReceiptTransactionDate} has already been fetched in the past and will therefore be skipped.",
+                            receiptDate);
+                        alreadyCompleteCount++;
+                        continue;
                     }
 
-                    token.ThrowIfCancellationRequested();
-                    _logger.LogInformation("Fetching the receipt summaries.");
-                    getReceiptSummaries = await _entityRepository.StartGetReceiptSummariesAsync(commandEntity.Id, token);
-                    var receiptSummaries = await krogerClient.GetReceiptSummariesAsync(token);
-                    await _entityRepository.CompleteOperationAsync(getReceiptSummaries, token);
+                    var receiptUrl = krogerClient.GetReceiptUrl(receiptId);
+                    _logger.LogInformation(
+                        Environment.NewLine +
+                        $"Fetching receipt {{Number}} of {{Total}}.{Environment.NewLine}" +
+                        $"  URL:  {{ReceiptUrl}}{Environment.NewLine}" +
+                        $"  Date: {{ReceiptTransactionDate}}",
+                        receiptNumber,
+                        ascendingChronological.Count,
+                        receiptUrl,
+                        receiptId.TransactionDate);
 
-                    if (receiptSummaries == null)
+                    var getReceipt = await _entityRepository.StartGetReceiptAsync(commandEntity.Id, receiptIdEntity.Id, token);
+                    getReceipts[receiptId] = getReceipt;
+                    var receipt = await krogerClient.GetReceiptAsync(receiptId, token);
+                    await _entityRepository.CompleteOperationAsync(getReceipt, token);
+
+                    if (receipt == null)
                     {
-                        _logger.LogError("No receipt summary data was found.");
+                        _logger.LogError("No receipt data was found for {{ReceiptUrl}}.", receiptUrl);
                         return false;
                     }
 
                     _logger.LogInformation(
-                        "Found {Count} receipts. Processing them from oldest to newest.",
-                        receiptSummaries.Response.Count);
-                    var ascendingChronological = receiptSummaries
-                        .Response
-                        .OrderBy(x => DateTimeOffset.ParseExact(x.ReceiptId.TransactionDate, "yyyy-MM-dd", CultureInfo.InvariantCulture))
-                        .ToList();
-
-                    var receiptNumber = 0;
-                    foreach (var receiptSummary in ascendingChronological)
-                    {
-                        token.ThrowIfCancellationRequested();
-
-                        receiptNumber++;
-
-                        var receiptId = receiptSummary.ReceiptId;
-                        var receiptDate = receiptId.TransactionDate;
-
-                        if (getReceipts.ContainsKey(receiptId))
-                        {
-                            _logger.LogWarning(
-                                "A receipt on {ReceiptTransactionDate} appeared more than one in the receipt summaries. It will only be fetched once.",
-                                receiptDate);
-                            continue;
-                        }
-
-                        var receiptIdEntity = await _entityRepository.GetOrAddReceiptAsync(userEntity.Id, receiptId, token);
-                        if (!_settings.RefetchReceipts
-                            && receiptIdEntity
-                                .GetReceiptOperationEntities
-                                .Any(gr => gr.ResponseEntities.Any(r => r.RequestType == RequestType.ReceiptDetail)))
-                        {
-                            _logger.LogDebug(
-                                "A receipt on {ReceiptTransactionDate} has already been fetched in the past and will therefore be skipped.",
-                                receiptDate);
-                            continue;
-                        }
-
-                        var receiptUrl = krogerClient.GetReceiptUrl(receiptId);
-                        _logger.LogInformation(
-                            Environment.NewLine +
-                            $"Fetching receipt {{Number}} of {{Total}}.{Environment.NewLine}" +
-                            $"  URL:  {{ReceiptUrl}}{Environment.NewLine}" +
-                            $"  Date: {{ReceiptTransactionDate}}",
-                            receiptNumber,
-                            ascendingChronological.Count,
-                            receiptUrl,
-                            receiptId.TransactionDate);
-
-                        var getReceipt = await _entityRepository.StartGetReceiptAsync(commandEntity.Id, receiptIdEntity.Id, token);
-                        getReceipts[receiptId] = getReceipt;
-                        var receipt = await krogerClient.GetReceiptAsync(receiptId, token);
-                        await _entityRepository.CompleteOperationAsync(getReceipt, token);
-
-                        if (receipt == null)
-                        {
-                            _logger.LogError("No receipt data was found for {{ReceiptUrl}}.", receiptUrl);
-                            return false;
-                        }
-
-                        _logger.LogInformation(
-                            "Done. The receipt had {ItemCount} items, totaling {Amount}.",
-                            receipt.Response.TotalLineItems,
-                            receipt.Response.Total.Value.ToString("C", CultureInfo.CreateSpecificCulture("en-US")));
-                    }
-                }
-                catch (Exception)
-                {
-                    try
-                    {
-                        await krogerClient.CompleteAsync();
-                    }
-                    catch
-                    {
-                        // This is just a best effort.
-                    }
-
-                    throw;
+                        "Done. The receipt had {ItemCount} items, totaling {Amount}.",
+                        receipt.Response.TotalLineItems,
+                        receipt.Response.Total.Value.ToString("C", CultureInfo.CreateSpecificCulture("en-US")));
                 }
 
-                await krogerClient.CompleteAsync();
+                _logger.LogInformation("{Count} receipts have already been fetched and were therefore skipped.", alreadyCompleteCount);
+
                 await _entityRepository.CompleteOperationAsync(commandEntity, token);
 
                 return true;

@@ -46,8 +46,6 @@ namespace KrogerScrape.Client
 
         private readonly IKrogerClientSettings _settings;
         private readonly ILogger<KrogerClient> _logger;
-        private readonly AsyncBlockingQueue<Response> _queue;
-        private readonly Task _dequeueTask;
         private readonly ConcurrentQueue<Func<Response, Task>> _listeners;
         private readonly Lazy<Task<Browser>> _lazyBrowser;
         private Browser _browserForDispose;
@@ -60,8 +58,6 @@ namespace KrogerScrape.Client
         {
             _settings = settings;
             _logger = logger;
-            _queue = new AsyncBlockingQueue<Response>();
-            _dequeueTask = DequeueAsync();
             _listeners = new ConcurrentQueue<Func<Response, Task>>();
             _lazyBrowser = new Lazy<Task<Browser>>(async () =>
             {
@@ -171,36 +167,9 @@ namespace KrogerScrape.Client
             return revisionInfo;
         }
 
-        private async Task DequeueAsync()
-        {
-            await Task.Yield();
-
-            bool hasItem;
-            do
-            {
-                var result = await _queue.TryDequeueAsync();
-                hasItem = result.HasItem;
-
-                if (hasItem)
-                {
-                    foreach (var listener in _listeners)
-                    {
-                        await listener(result.Item);
-                    }
-                }
-            }
-            while (hasItem);
-        }
-
         public void AddResponseRecordListener(Func<Response, Task> onResponseRecordAsync)
         {
             _listeners.Enqueue(onResponseRecordAsync);
-        }
-
-        public async Task CompleteAsync()
-        {
-            _queue.MarkAsComplete();
-            await _dequeueTask;
         }
 
         private async Task<Page> GetPageAsync()
@@ -361,7 +330,7 @@ function () {
             using (var captureState = new CaptureState(
                 OperationType.SignIn,
                 null,
-                _queue,
+                _listeners.ToList(),
                 _logger))
             {
                 captureState.CaptureAuthenticationState(page);
@@ -448,7 +417,7 @@ function () {
             using (var captureState = new CaptureState(
                 OperationType.GetReceiptSummaries,
                 null,
-                _queue,
+                _listeners.ToList(),
                 _logger))
             {
                 captureState.CaptureAuthenticationState(page);
@@ -502,7 +471,7 @@ function () {
             using (var captureState = new CaptureState(
                 OperationType.GetReceipt,
                 receiptId,
-                _queue,
+                _listeners.ToList(),
                 _logger))
             {
                 captureState.CaptureAuthenticationState(page);
