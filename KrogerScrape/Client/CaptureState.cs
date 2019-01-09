@@ -81,7 +81,7 @@ namespace KrogerScrape.Client
 
         public void CaptureAuthenticationState(Page page)
         {
-            Capture<AuthenticationState>(
+            Capture(
                 page,
                 RequestType.AuthenticationState,
                 HttpMethod.Get,
@@ -91,7 +91,7 @@ namespace KrogerScrape.Client
 
         public void CaptureReceiptSummaryByUserId(Page page)
         {
-            Capture<List<Receipt>>(
+            Capture(
                 page,
                 RequestType.ReceiptSummaryByUserId,
                 HttpMethod.Get,
@@ -101,7 +101,7 @@ namespace KrogerScrape.Client
 
         public void CaptureReceiptDetail(Page page)
         {
-            Capture<Receipt>(
+            Capture(
                 page,
                 RequestType.ReceiptDetail,
                 HttpMethod.Post,
@@ -111,7 +111,7 @@ namespace KrogerScrape.Client
 
         public void CaptureSignIn(Page page)
         {
-            Capture<SignInResponse>(
+            Capture(
                 page,
                 RequestType.SignIn,
                 HttpMethod.Post,
@@ -197,8 +197,10 @@ namespace KrogerScrape.Client
 
             var body = await args.Response.TextAsync();
 
+            var requestId = $"{DateTimeOffset.UtcNow.Ticks:D20}-{Guid.NewGuid():N}";
+
             _queue.Enqueue(new Response(
-                args.Response.Request.RequestId,
+                requestId,
                 _operationType,
                 _operationParameters,
                 requestType,
@@ -210,7 +212,7 @@ namespace KrogerScrape.Client
             try
             {
                 AddDeserializedResponse(
-                    args.Response.Request.RequestId,
+                    requestId,
                     deserialize(body));
             }
             catch (JsonException)
@@ -218,7 +220,7 @@ namespace KrogerScrape.Client
                 try
                 {
                     AddDeserializedResponse(
-                        args.Response.Request.RequestId,
+                        requestId,
                         _deserializer.ErrorResponse(body));
 
                     var prettyJson = JObject.Parse(body).ToString(Formatting.Indented);

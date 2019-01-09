@@ -173,7 +173,10 @@ namespace KrogerScrape.Logic
                         receipt.Response.Total.Value.ToString("C", CultureInfo.CreateSpecificCulture("en-US")));
                 }
 
-                _logger.LogInformation("{Count} receipts have already been fetched and were therefore skipped.", alreadyCompleteCount);
+                if (alreadyCompleteCount > 0)
+                {
+                    _logger.LogInformation("{Count} receipts have already been fetched and were therefore skipped.", alreadyCompleteCount);
+                }
 
                 await _entityRepository.CompleteOperationAsync(commandEntity, token);
 
