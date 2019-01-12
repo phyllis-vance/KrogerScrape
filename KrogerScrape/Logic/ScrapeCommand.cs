@@ -158,7 +158,7 @@ namespace KrogerScrape.Logic
 
                     if (receipt == null)
                     {
-                        _logger.LogError("No receipt data was found for {{ReceiptUrl}}.", receiptUrl);
+                        _logger.LogError("No receipt data was found for {ReceiptUrl}.", receiptUrl);
                         return false;
                     }
 
