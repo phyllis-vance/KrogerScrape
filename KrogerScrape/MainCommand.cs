@@ -32,6 +32,7 @@ namespace KrogerScrape
                 return 1;
             });
 
+            app.Command("json", c => JsonCommand.Configure(c, serviceProvider, logger, token));
             app.Command("scrape", c => ScrapeCommand.Configure(c, serviceProvider, logger, token));
             app.Command("stop-orphans", c => StopOrphansCommand.Configure(c, serviceProvider, logger, token));
         }

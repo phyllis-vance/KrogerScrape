@@ -125,8 +125,10 @@ namespace KrogerScrape
             serviceCollection.AddTransient<EntityRepository>();
             serviceCollection.AddTransient<KrogerClient>();
             serviceCollection.AddTransient(sp => new KrogerClientFactory(() => sp.GetRequiredService<KrogerClient>()));
+
             serviceCollection.AddTransient<ScrapeCommandLogic>();
             serviceCollection.AddTransient<StopOrphansCommandLogic>();
+            serviceCollection.AddTransient<JsonCommandLogic>();
 
             serviceCollection.AddSingleton<KrogerScrapeSettingsFactory>();
             serviceCollection.AddTransient(sp => sp.GetRequiredService<KrogerScrapeSettingsFactory>().Create());

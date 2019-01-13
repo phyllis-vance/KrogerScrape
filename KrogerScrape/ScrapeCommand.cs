@@ -20,14 +20,11 @@ namespace KrogerScrape
         {
             app.Description = "Log in to Kroger.com and download all available purchase history.";
 
-            var emailOption = app.Option(
-                "-e|--email <EMAIL>",
-                "Required. The email address for your Kroger account.",
-                CommandOptionType.SingleValue,
-                o => o.IsRequired().Accepts(a => a.EmailAddress()));
+            var emailOption = app.EmailOption();
             var passwordOption = app.Option(
                 "-p|--password <PASSWORD>",
-                "The password for your Kroger account. Defaults to acquiring it interactively.",
+                $"The password for your Kroger account.{Environment.NewLine}" +
+                $"If not provided as an option, the password will be acquired interactively.",
                 CommandOptionType.SingleValue);
             var refetchOption = app.Option(
                 "--refetch",
@@ -73,11 +70,11 @@ namespace KrogerScrape
                     DownloadsPath = downloadsPathOption.GetDownloadsPath(),
                 });
 
-                return await ExecuteScrapeCommandAsync(app.Name, serviceProvider, logger, token);
+                return await ExecuteAsync(app.Name, serviceProvider, logger, token);
             });
         }
 
-        private static async Task<int> ExecuteScrapeCommandAsync(
+        private static async Task<int> ExecuteAsync(
             string commandName,
             IServiceProvider serviceProvider,
             ILogger logger,

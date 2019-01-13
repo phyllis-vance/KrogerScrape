@@ -30,11 +30,11 @@ namespace KrogerScrape
                     DownloadsPath = downloadsPathOption.GetDownloadsPath(),
                 });
 
-                return ExecuteStopOrphansCommand(app.Name, serviceProvider, logger);
+                return ExecuteAsync(app.Name, serviceProvider, logger);
             });
         }
 
-        private static int ExecuteStopOrphansCommand(string commandName, IServiceProvider serviceProvider, ILogger logger)
+        private static int ExecuteAsync(string commandName, IServiceProvider serviceProvider, ILogger logger)
         {
             logger.LogDebug("Initializing the {CommandName} command.", commandName);
 

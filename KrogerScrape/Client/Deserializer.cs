@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace KrogerScrape.Client
 {
@@ -35,6 +36,11 @@ namespace KrogerScrape.Client
         public ErrorResponse ErrorResponse(string json)
         {
             return Deserialize<ErrorResponse>(json);
+        }
+
+        public JObject JObject(string json)
+        {
+            return Deserialize<JObject>(json);
         }
 
         private T Deserialize<T>(string json)

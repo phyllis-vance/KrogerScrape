@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using KrogerScrape.Client;
 using KrogerScrape.Entities;
-using KrogerScrape.Support;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 
@@ -67,47 +65,27 @@ namespace KrogerScrape.Logic
 
         public async Task<List<ResponseEntity>> GetResponsesAsync(
             string email,
-            string divisionNumber,
-            string storeNumber,
-            string transactionDate,
-            string terminalNumber,
-            string transactionId,
+            string minTransactionDate,
+            string maxTranscationDate,
             CancellationToken token)
         {
             using (var entityContext = _entityContextFactory.Create())
             {
-                IQueryable<ReceiptEntity> query = entityContext
-                    .Receipts
-                    .Include(x => x.ReceiptResponseEntity);
+                IQueryable<ReceiptEntity> query = entityContext.Receipts;
 
                 if (email != null)
                 {
                     query = query.Where(x => x.UserEntity.Email == email);
                 }
 
-                if (divisionNumber != null)
+                if (minTransactionDate != null)
                 {
-                    query = query.Where(x => x.DivisionNumber == divisionNumber);
+                    query = query.Where(x => x.TransactionDate.CompareTo(minTransactionDate) >= 0);
                 }
 
-                if (storeNumber != null)
+                if (maxTranscationDate != null)
                 {
-                    query = query.Where(x => x.StoreNumber == storeNumber);
-                }
-
-                if (transactionDate != null)
-                {
-                    query = query.Where(x => x.TransactionDate == transactionDate);
-                }
-
-                if (terminalNumber != null)
-                {
-                    query = query.Where(x => x.TerminalNumber == terminalNumber);
-                }
-
-                if (transactionId != null)
-                {
-                    query = query.Where(x => x.TransactionId == transactionId);
+                    query = query.Where(x => x.TransactionDate.CompareTo(maxTranscationDate) <= 0);
                 }
 
                 return await query
@@ -189,7 +167,7 @@ namespace KrogerScrape.Logic
                 {
                     try
                     {
-                        var json = Deserialize(response);
+                        var json = response.Decompress();
                         var deserializedReceipt = _deserializer.Receipt(json);
 
                         var rid = deserializedReceipt.ReceiptId;
@@ -215,35 +193,6 @@ namespace KrogerScrape.Logic
 
                 return receipt;
             }
-        }
-
-        private string Deserialize(ResponseEntity response)
-        {
-            byte[] decompressed;
-            switch (response.CompressionType)
-            {
-                case CompressionType.Gzip:
-                    decompressed = CompressionUtility.Decompress(response.Bytes);
-                    break;
-                case CompressionType.None:
-                    decompressed = response.Bytes;
-                    break;
-                default:
-                    throw new NotImplementedException();
-            }
-
-            return Encoding.UTF8.GetString(decompressed);
-        }
-
-        private SerializedBytes Serialize(string body)
-        {
-            var uncompressedBytes = Encoding.UTF8.GetBytes(body);
-            var compressedBytes = CompressionUtility.Compress(uncompressedBytes);
-            var isCompressed = compressedBytes.Length < uncompressedBytes.Length;
-            var bytes = isCompressed ? compressedBytes : uncompressedBytes;
-            var compressionType = isCompressed ? CompressionType.Gzip : CompressionType.None;
-
-            return new SerializedBytes(compressionType, bytes);
         }
 
         public async Task TrySetLatestReceiptResponseAsync(
@@ -281,8 +230,6 @@ namespace KrogerScrape.Logic
         {
             using (var entityContext = _entityContextFactory.Create())
             {
-                var serializedBytes = Serialize(response.Body);
-
                 var entity = new ResponseEntity
                 {
                     OperationEntityId = operationEntityId,
@@ -291,9 +238,9 @@ namespace KrogerScrape.Logic
                     CompletedTimestamp = response.CompletedTimestamp,
                     Method = response.Method.Method,
                     Url = response.Url,
-                    CompressionType = serializedBytes.CompressionType,
-                    Bytes = serializedBytes.Bytes,
                 };
+
+                entity.Compress(response.Body);
 
                 await entityContext.Responses.AddAsync(entity, token);
                 await entityContext.SaveChangesAsync(token);
@@ -388,18 +335,6 @@ namespace KrogerScrape.Logic
                 operationEntity.CompletedTimestamp = DateTimeOffset.UtcNow;
                 await entityContext.SaveChangesAsync(token);
             }
-        }
-
-        private class SerializedBytes
-        {
-            public SerializedBytes(CompressionType compressionType, byte[] bytes)
-            {
-                CompressionType = compressionType;
-                Bytes = bytes;
-            }
-
-            public CompressionType CompressionType { get; }
-            public byte[] Bytes { get; }
         }
     }
 }

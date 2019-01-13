@@ -29,7 +29,7 @@ namespace KrogerScrape.Settings
         {
             return app.Option<LogLevel>(
                 $"{LogLevelLongOption} <LEVEL>",
-                $"The minimum log level to show.{Environment.NewLine}" +
+                $"Optional. The minimum log level to show.{Environment.NewLine}" +
                 $"Options: {string.Join(", ", Enum.GetNames(typeof(LogLevel)))}{Environment.NewLine}" +
                 $"Default: {DefaultLogLevel}",
                 CommandOptionType.SingleValue);
@@ -44,7 +44,7 @@ namespace KrogerScrape.Settings
         {
             return app.Option<DatabasePath>(
                 "--database-path <PATH>",
-                $"The path to the database path.{Environment.NewLine}" +
+                $"Optional. The path to the database path.{Environment.NewLine}" +
                 $"Default: {GetDefaultDatabasePath()}",
                 CommandOptionType.SingleValue);
         }
@@ -53,9 +53,18 @@ namespace KrogerScrape.Settings
         {
             return app.Option<DownloadsPath>(
                 "--downloads-path <DIR>",
-                $"The path to the where downloads (e.g. Chromium) should go.{Environment.NewLine}" +
+                $"Optional. The path to the where downloads (e.g. Chromium) should go.{Environment.NewLine}" +
                 $"Default: {GetDefaultDownloadsPath()}",
                 CommandOptionType.SingleValue);
+        }
+
+        public static CommandOption EmailOption(this CommandLineApplication app)
+        {
+            return app.Option(
+                "-e|--email <EMAIL>",
+                "Required. The email address for your Kroger account.",
+                CommandOptionType.SingleValue,
+                o => o.IsRequired().Accepts(a => a.EmailAddress()));
         }
 
         public static CommandOption CustomHelpOption(this CommandLineApplication app)
