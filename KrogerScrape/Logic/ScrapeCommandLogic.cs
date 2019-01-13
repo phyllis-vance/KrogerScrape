@@ -11,18 +11,18 @@ using Microsoft.Extensions.Logging;
 
 namespace KrogerScrape.Logic
 {
-    public class ScrapeCommand
+    public class ScrapeCommandLogic
     {
         private readonly EntityRepository _entityRepository;
         private readonly KrogerClientFactory _krogerClientFactory;
         private readonly IKrogerScrapeSettings _settings;
-        private readonly ILogger<ScrapeCommand> _logger;
+        private readonly ILogger<ScrapeCommandLogic> _logger;
 
-        public ScrapeCommand(
+        public ScrapeCommandLogic(
             EntityRepository entityRepository,
             KrogerClientFactory krogerClientFactory,
             IKrogerScrapeSettings settings,
-            ILogger<ScrapeCommand> logger)
+            ILogger<ScrapeCommandLogic> logger)
         {
             _entityRepository = entityRepository;
             _krogerClientFactory = krogerClientFactory;

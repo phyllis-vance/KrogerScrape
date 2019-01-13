@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using KrogerScrape.Client;
 using KrogerScrape.Entities;
 using KrogerScrape.Logic;
@@ -31,7 +30,7 @@ namespace KrogerScrape
 
                     var app = new CommandLineApplication();
 
-                    ConfigureApplication(app, serviceProvider, logger, token);
+                    MainCommand.Configure(app, serviceProvider, logger, token);
 
                     return app.Execute(args);
                 }
@@ -126,198 +125,14 @@ namespace KrogerScrape
             serviceCollection.AddTransient<EntityRepository>();
             serviceCollection.AddTransient<KrogerClient>();
             serviceCollection.AddTransient(sp => new KrogerClientFactory(() => sp.GetRequiredService<KrogerClient>()));
-            serviceCollection.AddTransient<ScrapeCommand>();
-            serviceCollection.AddTransient<StopOrphansCommand>();
+            serviceCollection.AddTransient<ScrapeCommandLogic>();
+            serviceCollection.AddTransient<StopOrphansCommandLogic>();
 
             serviceCollection.AddSingleton<KrogerScrapeSettingsFactory>();
             serviceCollection.AddTransient(sp => sp.GetRequiredService<KrogerScrapeSettingsFactory>().Create());
             serviceCollection.AddTransient<IKrogerClientSettings>(sp => sp.GetRequiredService<KrogerScrapeSettingsFactory>().Create());
 
             return serviceCollection.BuildServiceProvider();
-        }
-
-        private static void ConfigureApplication(
-            CommandLineApplication app,
-            IServiceProvider serviceProvider,
-            ILogger logger,
-            CancellationToken token)
-        {
-            app.FullName = "KrogerScrape";
-            app.Name = app.FullName;
-            app.Description = "Fetch receipt data from Kroger.com.";
-
-            app.ValueParsers.Add(new MarkerObjectValueParser<DownloadsPath>());
-            app.ValueParsers.Add(new MarkerObjectValueParser<DatabasePath>());
-            app.LogLevelOption();
-            var versionOption = app.VersionOptionFromAssemblyAttributes(typeof(Program).Assembly);
-            versionOption.Description = "Show version information.";
-            app.CustomHelpOption();
-
-            app.OnExecute(() =>
-            {
-                app.ShowHelp(usePager: false);
-                logger.LogWarning("Specify a command to continue.");
-                return 1;
-            });
-
-            app.Command("scrape", c => ConfigureScrapeCommand(c, serviceProvider, logger, token));
-            app.Command("stop-orphans", c => ConfigureStopOrphansCommand(c, serviceProvider, logger));
-        }
-
-        private static void ConfigureScrapeCommand(
-            CommandLineApplication app,
-            IServiceProvider serviceProvider,
-            ILogger logger,
-            CancellationToken token)
-        {
-            app.Description = "Log in to Kroger.com and download all available purchase history.";
-
-            var emailOption = app.Option(
-                "-e|--email <EMAIL>",
-                "Required. The email address for your Kroger account.",
-                CommandOptionType.SingleValue,
-                o => o.IsRequired().Accepts(a => a.EmailAddress()));
-            var passwordOption = app.Option(
-                "-p|--password <PASSWORD>",
-                "The password for your Kroger account. Defaults to acquiring it interactively.",
-                CommandOptionType.SingleValue);
-            var refetchOption = app.Option(
-                "--refetch",
-                "Fetch receipts that have already been fetched.",
-                CommandOptionType.NoValue);
-            var debugOption = app.Option(
-                "--debug",
-                "Debug problems by showing diagnostic information.",
-                CommandOptionType.NoValue);
-            var downloadsPathOption = app.DownloadsPathOption();
-            var databasePathOption = app.DatabasePathOption();
-            app.LogLevelOption();
-            app.CustomHelpOption();
-
-            app.OnExecute(async () =>
-            {
-                string password;
-                if (passwordOption.HasValue())
-                {
-                    password = passwordOption.Value();
-                }
-                else
-                {
-                    password = Prompt.GetPassword("Password:");
-                }
-
-                if (string.IsNullOrEmpty(password))
-                {
-                    logger.LogError(
-                        "The password is required, either by using the --{LongName} option or by providing it interactively.",
-                        passwordOption.LongName);
-                    return 1;
-                }
-
-                var settingsFactory = serviceProvider.GetRequiredService<KrogerScrapeSettingsFactory>();
-                settingsFactory.Initialize(new KrogerScrapeSettings
-                {
-                    Email = emailOption.Value().Trim(),
-                    Password = password,
-                    Debug = debugOption.HasValue(),
-                    RefetchReceipts = refetchOption.HasValue(),
-                    DatabasePath = databasePathOption.GetDatabasePath(),
-                    DownloadsPath = downloadsPathOption.GetDownloadsPath(),
-                });
-
-                return await ExecuteScrapeCommandAsync(app.Name, serviceProvider, logger, token);
-            });
-        }
-
-        private static async Task<int> ExecuteScrapeCommandAsync(
-            string commandName,
-            IServiceProvider serviceProvider,
-            ILogger logger,
-            CancellationToken token)
-        {
-            logger.LogDebug("Initializing the {CommandName} command.", commandName);
-
-            var settings = serviceProvider.GetRequiredService<IKrogerScrapeSettings>();
-            if (settings.RefetchReceipts)
-            {
-                logger.LogInformation("Both new receipts and receipts that have already been fetched will be fetched.");
-            }
-            else
-            {
-                logger.LogInformation("Only new receipts will be fetched.");
-            }
-
-            if (settings.Debug)
-            {
-                logger.LogInformation("Debug mode is enabled.");
-            }
-
-            logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", settings.DownloadsPath);
-            logger.LogDebug($"Using database path:{Environment.NewLine}{{DatabasePath}}", settings.DatabasePath);
-
-            var entityContextFactory = serviceProvider.GetRequiredService<EntityContextFactory>();
-            using (var entityContext = entityContextFactory.Create())
-            {
-                await entityContext.MigrateAsync(token);
-            }
-
-            var command = serviceProvider.GetRequiredService<ScrapeCommand>();
-
-            logger.LogDebug("Executing the {CommandName} command.", commandName);
-
-            var success = await command.ExecuteAsync(token);
-
-            if (success)
-            {
-                logger.LogInformation("The {CommandName} command has completed successfully.", commandName);
-                return 0;
-            }
-            else
-            {
-                logger.LogError("The {CommandName} command has failed.", commandName);
-                return 1;
-            }
-        }
-
-        private static void ConfigureStopOrphansCommand(
-            CommandLineApplication app,
-            IServiceProvider serviceProvider,
-            ILogger logger)
-        {
-            app.Description = "Stop orphan Chromium processes.";
-
-            var downloadsPathOption = app.DownloadsPathOption();
-            app.LogLevelOption();
-            app.CustomHelpOption();
-
-            app.OnExecute(() =>
-            {
-                var settingsFactory = serviceProvider.GetRequiredService<KrogerScrapeSettingsFactory>();
-                settingsFactory.Initialize(new KrogerScrapeSettings
-                {
-                    DownloadsPath = downloadsPathOption.GetDownloadsPath(),
-                });
-
-                return ExecuteStopOrphansCommand(app.Name, serviceProvider, logger);
-            });
-        }
-
-        private static int ExecuteStopOrphansCommand(string commandName, IServiceProvider serviceProvider, ILogger logger)
-        {
-            logger.LogDebug("Initializing the {CommandName} command.", commandName);
-
-            var settings = serviceProvider.GetRequiredService<IKrogerScrapeSettings>();
-            logger.LogDebug($"Using downloads path:{Environment.NewLine}{{DownloadsPath}}", settings.DownloadsPath);
-
-            var command = serviceProvider.GetRequiredService<StopOrphansCommand>();
-
-            logger.LogDebug("Executing the {CommandName} command.", commandName);
-
-            command.Execute();
-
-            logger.LogInformation("The {CommandName} command has completed.", commandName);
-
-            return 0;
         }
     }
 }

@@ -2,11 +2,11 @@
 
 namespace KrogerScrape.Logic
 {
-    public class StopOrphansCommand
+    public class StopOrphansCommandLogic
     {
         private readonly KrogerClientFactory _krogerClientFactory;
 
-        public StopOrphansCommand(KrogerClientFactory krogerClientFactory)
+        public StopOrphansCommandLogic(KrogerClientFactory krogerClientFactory)
         {
             _krogerClientFactory = krogerClientFactory;
         }
