@@ -62,15 +62,109 @@ namespace KrogerScrape.Logic
                     }
                 }
 
-                if (ctx.AlreadyComplete > 0)
-                {
-                    _logger.LogInformation("{Count} receipts have already been fetched and were therefore skipped.", ctx.AlreadyComplete);
-                }
-
-                await _entityRepository.CompleteOperationAsync(ctx.Command, ctx.Token);
+                await CompleteAsync(ctx);
 
                 return true;
             }
+        }
+
+        private async Task<Context> InitializeContextAsync(KrogerClient krogerClient, CancellationToken token)
+        {
+            var userEntity = await _entityRepository.GetOrAddUserAsync(_settings.Email, token);
+            var commandEntity = await _entityRepository.StartCommandAsync(userEntity.Id, token);
+            return new Context(krogerClient, userEntity, commandEntity, token);
+        }
+
+        private async Task SetLatestReceiptResponsesAsync(Context ctx)
+        {
+            // Make sure all existing receipts have the latest response.
+            _logger.LogInformation("Making sure all existing receipts have response data.");
+            var allReceipts = await _entityRepository.GetAllReceiptsAsync(ctx.User.Email, ctx.Token);
+            foreach (var receipt in allReceipts)
+            {
+                var updated = await _entityRepository.TrySetLatestReceiptResponseAsync(receipt.Id, ctx.Token);
+                if (updated.ReceiptResponseEntity == null)
+                {
+                    _logger.LogWarning("Receipt at {ReceiptUrl} has no receipt data.", receipt.GetReceiptId().GetUrl());
+                }
+            }
+        }
+
+        private async Task InitializeClientAsync(Context ctx)
+        {
+            ctx.Client.KillOrphanBrowsers();
+
+            ctx.Client.AddResponseRecordListener(
+                async response =>
+                {
+                    OperationEntity operationEntity;
+                    switch (response.OperationType)
+                    {
+                        case OperationType.SignIn:
+                            operationEntity = ctx.SignIn;
+                            break;
+                        case OperationType.GetReceiptSummaries:
+                            operationEntity = ctx.GetReceiptSummaries;
+                            break;
+                        case OperationType.GetReceipt:
+                            operationEntity = ctx.GetReceipts[(ReceiptId)response.OperationParameters];
+                            break;
+                        default:
+                            return;
+                    }
+
+                    await _entityRepository.RecordResponseAsync(operationEntity.Id, response, CancellationToken.None);
+                });
+
+            await ctx.Client.InitializeAsync();
+        }
+
+        private async Task<bool> SignInAsync(Context ctx)
+        {
+            ctx.Token.ThrowIfCancellationRequested();
+            _logger.LogInformation("Logging in with email address {Email}.", _settings.Email);
+            ctx.SignIn = await _entityRepository.StartSignInAsync(ctx.Command.Id, ctx.Token);
+            var signInResponse = await ctx.Client.SignInAsync(ctx.Token);
+            await _entityRepository.CompleteOperationAsync(ctx.SignIn, ctx.Token);
+
+            if (signInResponse == null)
+            {
+                _logger.LogError("No sign in data was found.");
+                return false;
+            }
+
+            if (signInResponse.Response.AuthenticationState?.Authenticated != true)
+            {
+                _logger.LogError("The sign in was not successful. Verify your email and password.");
+                return false;
+            }
+
+            return true;
+        }
+
+        private async Task<List<Receipt>> GetReceiptSummariesAsync(Context ctx)
+        {
+            ctx.Token.ThrowIfCancellationRequested();
+            _logger.LogInformation("Fetching the receipt summaries.");
+            ctx.GetReceiptSummaries = await _entityRepository.StartGetReceiptSummariesAsync(ctx.Command.Id, ctx.Token);
+            var receiptSummaries = await ctx.Client.GetReceiptSummariesAsync(ctx.Token);
+            await _entityRepository.CompleteOperationAsync(ctx.GetReceiptSummaries, ctx.Token);
+
+            if (receiptSummaries == null)
+            {
+                _logger.LogError("No receipt summary data was found.");
+                return null;
+            }
+
+            var ascendingChronological = receiptSummaries
+                .Response
+                .OrderBy(x => DateTimeOffset.ParseExact(x.ReceiptId.TransactionDate, "yyyy-MM-dd", CultureInfo.InvariantCulture))
+                .ToList();
+            _logger.LogInformation(
+                "Found {Count} receipts. Processing them from oldest to newest.",
+                ascendingChronological.Count);
+
+            return ascendingChronological;
         }
 
         private async Task<bool> GetReceiptAsync(Context ctx, Receipt receiptSummary, int receiptNumber, int receiptTotal)
@@ -140,103 +234,14 @@ namespace KrogerScrape.Logic
             return true;
         }
 
-        private async Task<bool> SignInAsync(Context ctx)
+        private async Task CompleteAsync(Context ctx)
         {
-            ctx.Token.ThrowIfCancellationRequested();
-            _logger.LogInformation("Logging in with email address {Email}.", _settings.Email);
-            ctx.SignIn = await _entityRepository.StartSignInAsync(ctx.Command.Id, ctx.Token);
-            var signInResponse = await ctx.Client.SignInAsync(ctx.Token);
-            await _entityRepository.CompleteOperationAsync(ctx.SignIn, ctx.Token);
-
-            if (signInResponse == null)
+            if (ctx.AlreadyComplete > 0)
             {
-                _logger.LogError("No sign in data was found.");
-                return false;
+                _logger.LogInformation("{Count} receipts have already been fetched and were therefore skipped.", ctx.AlreadyComplete);
             }
 
-            if (signInResponse.Response.AuthenticationState?.Authenticated != true)
-            {
-                _logger.LogError("The sign in was not successful. Verify your email and password.");
-                return false;
-            }
-
-            return true;
-        }
-
-        private async Task<List<Receipt>> GetReceiptSummariesAsync(Context ctx)
-        {
-            ctx.Token.ThrowIfCancellationRequested();
-            _logger.LogInformation("Fetching the receipt summaries.");
-            ctx.GetReceiptSummaries = await _entityRepository.StartGetReceiptSummariesAsync(ctx.Command.Id, ctx.Token);
-            var receiptSummaries = await ctx.Client.GetReceiptSummariesAsync(ctx.Token);
-            await _entityRepository.CompleteOperationAsync(ctx.GetReceiptSummaries, ctx.Token);
-
-            if (receiptSummaries == null)
-            {
-                _logger.LogError("No receipt summary data was found.");
-                return null;
-            }
-
-            var ascendingChronological = receiptSummaries
-                .Response
-                .OrderBy(x => DateTimeOffset.ParseExact(x.ReceiptId.TransactionDate, "yyyy-MM-dd", CultureInfo.InvariantCulture))
-                .ToList();
-            _logger.LogInformation(
-                "Found {Count} receipts. Processing them from oldest to newest.",
-                ascendingChronological.Count);
-
-            return ascendingChronological;
-        }
-
-        private async Task SetLatestReceiptResponsesAsync(Context ctx)
-        {
-            // Make sure all existing receipts have the latest response.
-            _logger.LogInformation("Making sure all existing receipts have response data.");
-            var allReceipts = await _entityRepository.GetAllReceiptsAsync(ctx.User.Email, ctx.Token);
-            foreach (var receipt in allReceipts)
-            {
-                var updated = await _entityRepository.TrySetLatestReceiptResponseAsync(receipt.Id, ctx.Token);
-                if (updated.ReceiptResponseEntity == null)
-                {
-                    _logger.LogWarning("Receipt at {ReceiptUrl} has no receipt data.", receipt.GetReceiptId().GetUrl());
-                }
-            }
-        }
-
-        private async Task<Context> InitializeContextAsync(KrogerClient krogerClient, CancellationToken token)
-        {
-            var userEntity = await _entityRepository.GetOrAddUserAsync(_settings.Email, token);
-            var commandEntity = await _entityRepository.StartCommandAsync(userEntity.Id, token);
-            return new Context(krogerClient, userEntity, commandEntity, token);
-        }
-
-        private async Task InitializeClientAsync(Context ctx)
-        {
-            ctx.Client.KillOrphanBrowsers();
-
-            ctx.Client.AddResponseRecordListener(
-                async response =>
-                {
-                    OperationEntity operationEntity;
-                    switch (response.OperationType)
-                    {
-                        case OperationType.SignIn:
-                            operationEntity = ctx.SignIn;
-                            break;
-                        case OperationType.GetReceiptSummaries:
-                            operationEntity = ctx.GetReceiptSummaries;
-                            break;
-                        case OperationType.GetReceipt:
-                            operationEntity = ctx.GetReceipts[(ReceiptId)response.OperationParameters];
-                            break;
-                        default:
-                            return;
-                    }
-
-                    await _entityRepository.RecordResponseAsync(operationEntity.Id, response, CancellationToken.None);
-                });
-
-            await ctx.Client.InitializeAsync();
+            await _entityRepository.CompleteOperationAsync(ctx.Command, ctx.Token);
         }
 
         private class Context
