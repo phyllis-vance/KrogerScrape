@@ -447,30 +447,12 @@ function () {
             }
         }
 
-        public string GetReceiptUrl(ReceiptId receiptId)
-        {
-            var pageUrl = "https://www.kroger.com/mypurchases/detail/" + string.Join("~", GetReceiptPieces(receiptId));
-            return pageUrl;
-        }
-
-        private static string[] GetReceiptPieces(ReceiptId receiptId)
-        {
-            return new[]
-            {
-                receiptId.DivisionNumber,
-                receiptId.StoreNumber,
-                receiptId.TransactionDate,
-                receiptId.TerminalNumber,
-                receiptId.TransactionId,
-            };
-        }
-
         public async Task<DeserializedResponse<Receipt>> GetReceiptAsync(ReceiptId receiptId, CancellationToken token)
         {
             ThrowIfDisposed();
             ThrowIfNotSignedIn();
 
-            var pageUrl = GetReceiptUrl(receiptId);
+            var pageUrl = receiptId.GetUrl();
 
             using (var page = await GetPageAsync())
             using (var captureState = new CaptureState(
@@ -494,7 +476,7 @@ function () {
 
                 await CaptureScreenshotIfDebugAsync(
                     page,
-                    $"{nameof(GetReceiptAsync)}-{string.Join("_", GetReceiptPieces(receiptId))}");
+                    $"{nameof(GetReceiptAsync)}-{string.Join("_", receiptId.GetIdentifyingStrings())}");
 
                 await captureState.WaitForCompletionAsync();
 

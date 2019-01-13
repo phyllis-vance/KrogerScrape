@@ -40,12 +40,35 @@ namespace KrogerScrape.Client
 
         public static bool operator ==(ReceiptId id1, ReceiptId id2)
         {
-            return EqualityComparer<ReceiptId>.Default.Equals(id1, id2);
+            if (ReferenceEquals(id1, null))
+            {
+                return ReferenceEquals(id2, null);
+            }
+
+            return id1.Equals(id2);
         }
 
         public static bool operator !=(ReceiptId id1, ReceiptId id2)
         {
             return !(id1 == id2);
+        }
+
+        public string GetUrl()
+        {
+            var pageUrl = "https://www.kroger.com/mypurchases/detail/" + string.Join("~", GetIdentifyingStrings());
+            return pageUrl;
+        }
+
+        public IReadOnlyList<string> GetIdentifyingStrings()
+        {
+            return new[]
+            {
+                DivisionNumber,
+                StoreNumber,
+                TransactionDate,
+                TerminalNumber,
+                TransactionId,
+            };
         }
     }
 }

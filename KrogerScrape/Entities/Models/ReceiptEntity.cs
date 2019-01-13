@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using KrogerScrape.Client;
 
 namespace KrogerScrape.Entities
 {
@@ -22,5 +23,17 @@ namespace KrogerScrape.Entities
         public UserEntity UserEntity { get; set; }
         public List<GetReceiptEntity> GetReceiptOperationEntities { get; set; }
         public ResponseEntity ReceiptResponseEntity { get; set; }
+
+        public ReceiptId GetReceiptId()
+        {
+            return new ReceiptId
+            {
+                DivisionNumber = DivisionNumber,
+                StoreNumber = StoreNumber,
+                TerminalNumber = TerminalNumber,
+                TransactionDate = TransactionDate,
+                TransactionId = TransactionId,
+            };
+        }
     }
 }

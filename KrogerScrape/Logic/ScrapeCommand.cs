@@ -35,11 +35,23 @@ namespace KrogerScrape.Logic
         {
             using (var krogerClient = _krogerClientFactory.Create())
             {
-                // Initialize the database and the browser.
-                krogerClient.KillOrphanBrowsers();
-
                 var userEntity = await _entityRepository.GetOrAddUserAsync(_settings.Email, token);
                 var commandEntity = await _entityRepository.StartCommandAsync(userEntity.Id, token);
+
+                // Make sure all existing receipts have the latest response.
+                _logger.LogInformation("Making sure all existing receipts have response data.");
+                var allReceipts = await _entityRepository.GetAllReceiptsAsync(_settings.Email, token);
+                foreach (var receipt in allReceipts)
+                {
+                    var updated = await _entityRepository.TrySetLatestReceiptResponseAsync(receipt.Id, token);
+                    if (updated.ReceiptResponseEntity == null)
+                    {
+                        _logger.LogWarning("Receipt at {ReceiptUrl} has no receipt data.", receipt.GetReceiptId().GetUrl());
+                    }
+                }
+
+                // Initialize the database and the browser.
+                krogerClient.KillOrphanBrowsers();
 
                 SignInEntity signIn = null;
                 GetReceiptSummariesEntity getReceiptSummaries = null;
@@ -130,8 +142,8 @@ namespace KrogerScrape.Logic
                     }
 
                     var receiptEntity = await _entityRepository.GetOrAddReceiptAsync(userEntity.Id, receiptId, token);
-                    receiptEntity = await _entityRepository.TrySetLatestReceiptResponseAsync(receiptEntity.Id, token);
-                    if (receiptEntity.ReceiptResponseEntity != null)
+                    if (!_settings.RefetchReceipts
+                        && receiptEntity.ReceiptResponseEntity != null)
                     {
                         _logger.LogDebug(
                             "A receipt on {ReceiptTransactionDate} has already been fetched in the past and will therefore be skipped.",
@@ -140,7 +152,7 @@ namespace KrogerScrape.Logic
                         continue;
                     }
 
-                    var receiptUrl = krogerClient.GetReceiptUrl(receiptId);
+                    var receiptUrl = receiptId.GetUrl();
                     _logger.LogInformation(
                         Environment.NewLine +
                         $"Fetching receipt {{Number}} of {{Total}}.{Environment.NewLine}" +
@@ -159,6 +171,12 @@ namespace KrogerScrape.Logic
                     if (receipt == null)
                     {
                         _logger.LogError("No receipt data was found for {ReceiptUrl}.", receiptUrl);
+                        return false;
+                    }
+
+                    if (receipt.Response.ReceiptId != receiptId)
+                    {
+                        _logger.LogError("Mismatched receipt data was returned for {ReceiptUrl}.", receiptUrl);
                         return false;
                     }
 

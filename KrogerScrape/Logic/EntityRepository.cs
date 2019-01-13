@@ -54,6 +54,17 @@ namespace KrogerScrape.Logic
             }
         }
 
+        public async Task<List<ReceiptEntity>> GetAllReceiptsAsync(string email, CancellationToken token)
+        {
+            using (var entityContext = _entityContextFactory.Create())
+            {
+                return await entityContext
+                    .Receipts
+                    .Where(x => x.UserEntity.Email == email)
+                    .ToListAsync(token);
+            }
+        }
+
         public async Task<List<ResponseEntity>> GetResponsesAsync(
             string email,
             string divisionNumber,
@@ -179,7 +190,17 @@ namespace KrogerScrape.Logic
                     try
                     {
                         var json = Deserialize(response);
-                        _deserializer.Receipt(json);
+                        var deserializedReceipt = _deserializer.Receipt(json);
+
+                        var rid = deserializedReceipt.ReceiptId;
+                        if (rid.DivisionNumber != receipt.DivisionNumber
+                            || rid.StoreNumber != receipt.StoreNumber
+                            || rid.TerminalNumber != receipt.TerminalNumber
+                            || rid.TransactionDate != receipt.TransactionDate
+                            || rid.TransactionId != receipt.TransactionId)
+                        {
+                            continue;
+                        }
                     }
                     catch (JsonException)
                     {
