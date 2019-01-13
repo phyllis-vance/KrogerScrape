@@ -3,15 +3,18 @@
 Fetch receipt data from Kroger.com.
 
 This tool logs in to Kroger.com and saves all of your receipt information into a database stored on your file system.
-Currently, the data is only saving in a SQLite database, so this tool is not very useful yet. Stay tuned for more
-features.
+
+You can dump all of the fetched receipt information to stdout in a JSON format using:
+
+```
+> dotnet .\KrogerScrape.dll json --email plapin@dundermifflinpaper.com
+```
 
 As far as I know, this works on other [Kroger-owned grocery stores](https://en.wikipedia.org/wiki/Kroger#Chains) like
 Fry's, QFC, Fred Meyer, Ralph's, etc.
 
 ## Planned Features
 
-1. Export data to JSON
 1. Export data to CSV
 1. Generate reports
 
