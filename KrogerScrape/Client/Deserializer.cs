@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -30,7 +31,15 @@ namespace KrogerScrape.Client
 
         public Receipt Receipt(string json)
         {
-            return Deserialize<Receipt>(json);
+            try
+            {
+                var receipts = Deserialize<Receipts>(json);
+                return receipts.Data.Single();
+            }
+            catch (JsonException)
+            {
+                return Deserialize<Receipt>(json);
+            }
         }
 
         public ErrorResponse ErrorResponse(string json)

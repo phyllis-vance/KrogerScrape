@@ -105,7 +105,7 @@ namespace KrogerScrape.Client
                 page,
                 RequestType.ReceiptDetail,
                 HttpMethod.Post,
-                "https://www.kroger.com/mypurchases/api/v1/receipt/detail",
+                "https://www.kroger.com/mypurchases/api/v1/receipt/details",
                 x => _deserializer.Receipt(x));
         }
 
@@ -153,13 +153,15 @@ namespace KrogerScrape.Client
             InitializeDeserializedResponseList<T>();
             InitializeDeserializedResponseList<ErrorResponse>();
 
-            EventHandler<ResponseCreatedEventArgs> eventHandler = (sender, args) =>
+            EventHandler<ResponseCreatedEventArgs> eventHandler = async (sender, args) =>
             {
                 if (args.Response.Request.Method == method
                     && args.Response.Request.Url == url)
                 {
                     _logger.LogDebug("Received a response for: {Method} {Url}", method, url);
-                    _tasks.Add(CaptureJsonResponseAsync<T>(requestType, args, deserialize));
+                    var captureTask = CaptureJsonResponseAsync(requestType, args, deserialize);
+                    _tasks.Add(captureTask);
+                    await captureTask;
                 }
             };
 

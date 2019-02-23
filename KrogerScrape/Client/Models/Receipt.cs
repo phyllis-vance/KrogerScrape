@@ -22,7 +22,7 @@ namespace KrogerScrape.Client
         public List<JToken> TenderChanges
         {
             get => _tenderChanges;
-            set => SetIfNullOrEmpty(ref _tenderChanges, value);
+            set => ModelHelper.SetIfNullOrEmpty(ref _tenderChanges, value);
         }
 
         public decimal? Total { get; set; }
@@ -33,31 +33,22 @@ namespace KrogerScrape.Client
         public List<JToken> PriceModifiers
         {
             get => _priceModifiers;
-            set => SetIfNullOrEmpty(ref _priceModifiers, value);
+            set => ModelHelper.SetIfNullOrEmpty(ref _priceModifiers, value);
         }
 
         public List<JToken> Tags
         {
             get => _tags;
-            set => SetIfNullOrEmpty(ref _tags, value);
+            set => ModelHelper.SetIfNullOrEmpty(ref _tags, value);
         }
 
+        public GrossAmount GrossAmount { get; set; }
+        public Coupon Coupon { get; set; }
         public string Source { get; set; }
         public string Version { get; set; }
         public DateTime? TransactionTime { get; set; }
         public DateTimeOffset? TransactionTimeWithTimezone { get; set; }
         public decimal? TotalTender { get; set; }
         public decimal? TotalTenderChange { get; set; }
-
-        private static void SetIfNullOrEmpty(ref List<JToken> _field, List<JToken> value)
-        {
-            if (value == null || value.Count == 0)
-            {
-                _field = value;
-                return;
-            }
-
-            throw new NotImplementedException();
-        }
     }
 }

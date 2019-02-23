@@ -6,5 +6,7 @@
         public decimal? Amount { get; set; }
         public string Action { get; set; }
         public string PromotionId { get; set; }
+        public string CouponType { get; set; }
+        public string ReportingCode { get; set; }
     }
 }

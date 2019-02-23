@@ -17,7 +17,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Logging" Version="2.2.0" />
     <PackageReference Include="Newtonsoft.Json" Version="10.0.3" />
-    <PackageReference Include="PuppeteerSharp" Version="1.11.1" />
+    <PackageReference Include="PuppeteerSharp" Version="1.11.2" />
   </ItemGroup>
 
 </Project>
