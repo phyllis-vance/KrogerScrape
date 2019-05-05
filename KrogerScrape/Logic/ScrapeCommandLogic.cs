@@ -56,6 +56,12 @@ namespace KrogerScrape.Logic
                 foreach (var receiptSummary in receiptSummaries)
                 {
                     receiptNumber++;
+
+                    if (_settings.SkipReceipts.HasValue && _settings.SkipReceipts.Value >= receiptNumber)
+                    {
+                        continue;
+                    }
+
                     if (!await GetReceiptAsync(ctx, receiptSummary, receiptNumber, receiptSummaries.Count))
                     {
                         return false;

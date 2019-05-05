@@ -6,5 +6,6 @@ namespace KrogerScrape.Settings
     {
         string DatabasePath { get; }
         bool RefetchReceipts { get; }
+        int? SkipReceipts { get; }
     }
 }

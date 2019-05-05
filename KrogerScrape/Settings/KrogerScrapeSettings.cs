@@ -8,5 +8,6 @@
         public bool Debug { get; set; }
         public string DownloadsPath { get; set; }
         public bool RefetchReceipts { get; set; }
+        public int? SkipReceipts { get; set; }
     }
 }

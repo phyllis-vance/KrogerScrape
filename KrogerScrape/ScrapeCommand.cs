@@ -30,6 +30,10 @@ namespace KrogerScrape
                 "--refetch",
                 "Fetch receipts that have already been fetched.",
                 CommandOptionType.NoValue);
+            var skipOption = app.Option<int>(
+                "--skip",
+                "The number of receipts to skip while fetching.",
+                CommandOptionType.SingleValue);
             var debugOption = app.Option(
                 "--debug",
                 "Debug problems by showing diagnostic information.",
@@ -65,6 +69,7 @@ namespace KrogerScrape
                     Email = emailOption.Value().Trim(),
                     Password = password,
                     Debug = debugOption.HasValue(),
+                    SkipReceipts = skipOption.HasValue() ? skipOption.ParsedValue : (int?)null,
                     RefetchReceipts = refetchOption.HasValue(),
                     DatabasePath = databasePathOption.GetDatabasePath(),
                     DownloadsPath = downloadsPathOption.GetDownloadsPath(),
