@@ -18,12 +18,12 @@ namespace KrogerScrape.Client
 
         private static readonly IReadOnlyList<string> ExcludedExtensions = new List<string>
         {
-            ".css",
-            ".gif",
-            ".jpg",
-            ".png",
-            ".svg",
-            ".woff2",
+            // ".css",
+            // ".gif",
+            // ".jpg",
+            // ".png",
+            // ".svg",
+            // ".woff2",
         };
 
         private static readonly IReadOnlyList<string> ExcludedSubstrings = new List<string>
@@ -37,10 +37,10 @@ namespace KrogerScrape.Client
             "googleadservices.com",
             "googletagmanager.com",
             "omtrdc.net",
-            "sstats.kroger.com",
-            "www.kroger.com/asset/",
-            "www.kroger.com/clickstream/",
-            "www.kroger.com/product/images/",
+            // "sstats.kroger.com",
+            // "www.kroger.com/asset/",
+            // "www.kroger.com/clickstream/",
+            // "www.kroger.com/product/images/",
         };
 
         private readonly Deserializer _deserializer;

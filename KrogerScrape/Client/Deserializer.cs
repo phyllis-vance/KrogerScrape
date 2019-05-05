@@ -33,12 +33,12 @@ namespace KrogerScrape.Client
         {
             try
             {
-                var receipts = Deserialize<Receipts>(json);
-                return receipts.Data.Single();
+                return Deserialize<Receipt>(json);
             }
             catch (JsonException)
             {
-                return Deserialize<Receipt>(json);
+                var receipts = Deserialize<Receipts>(json);
+                return receipts.Data.Single();
             }
         }
 
